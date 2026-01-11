@@ -267,6 +267,86 @@ def show_transactions(days: int):
         click.echo(f"{txn_date}: {player_name:<25} {txn_type:<20} {teams}")
 
 
+@cli.command()
+@click.argument("player_name", type=str)
+@click.option("--year", "-y", default=2026, help="Projection year")
+@click.option("--team", "-t", type=str, help="Filter by team (abbreviation)")
+def show_player(player_name: str, year: int, team: Optional[str]):
+    """Show projected stats for a player."""
+    from .projections import Projector, ProjectionConfig
+
+    click.echo(f"\nSearching for '{player_name}' projections...")
+
+    config = ProjectionConfig(projection_year=year, historical_years=3)
+    projector = Projector(config)
+
+    # Search through all teams for the player
+    team_list = [team.upper()] if team else None
+    team_projections = projector.project_all_teams()
+
+    found = False
+    for team_proj in team_projections:
+        if team_list and team_proj.team not in team_list:
+            continue
+
+        # Search batters
+        for batter in team_proj.batters:
+            if player_name.lower() in batter.name.lower():
+                found = True
+                click.echo(f"\n{'='*50}")
+                click.echo(f"  {batter.name} ({team_proj.team}) - {year} Projection")
+                click.echo(f"{'='*50}")
+                click.echo(f"  Position: {batter.primary_position}")
+                click.echo(f"\n  PLAYING TIME")
+                click.echo(f"    Projected PA:    {batter.projected_pa:>6.0f}")
+                click.echo(f"    Projected Games: {batter.projected_games:>6.0f}")
+                click.echo(f"\n  RATE STATS")
+                click.echo(f"    AVG:   {batter.projected_avg:>6.3f}")
+                click.echo(f"    OBP:   {batter.projected_obp:>6.3f}")
+                click.echo(f"    SLG:   {batter.projected_slg:>6.3f}")
+                click.echo(f"    OPS:   {batter.projected_obp + batter.projected_slg:>6.3f}")
+                click.echo(f"    wOBA:  {batter.projected_woba:>6.3f}")
+                click.echo(f"\n  COUNTING STATS (projected)")
+                click.echo(f"    HR:    {batter.projected_hr:>6.0f}")
+                click.echo(f"    RBI:   {batter.projected_rbi:>6.0f}")
+                click.echo(f"    R:     {batter.projected_runs:>6.0f}")
+                click.echo(f"    SB:    {batter.projected_sb:>6.0f}")
+                click.echo(f"\n  VALUE")
+                click.echo(f"    WAR:   {batter.projected_war:>6.1f}")
+
+        # Search pitchers
+        for pitcher in team_proj.pitchers:
+            if player_name.lower() in pitcher.name.lower():
+                found = True
+                click.echo(f"\n{'='*50}")
+                click.echo(f"  {pitcher.name} ({team_proj.team}) - {year} Projection")
+                click.echo(f"{'='*50}")
+                click.echo(f"  Role: {pitcher.role}")
+                click.echo(f"\n  PLAYING TIME")
+                click.echo(f"    Projected IP:     {pitcher.projected_ip:>6.1f}")
+                click.echo(f"    Projected Games:  {pitcher.projected_games:>6.0f}")
+                if pitcher.role == "SP":
+                    click.echo(f"    Projected Starts: {pitcher.projected_starts:>6.0f}")
+                click.echo(f"\n  RATE STATS")
+                click.echo(f"    ERA:   {pitcher.projected_era:>6.2f}")
+                click.echo(f"    WHIP:  {pitcher.projected_whip:>6.2f}")
+                click.echo(f"    K/9:   {pitcher.projected_k9:>6.1f}")
+                click.echo(f"    BB/9:  {pitcher.projected_bb9:>6.1f}")
+                click.echo(f"    HR/9:  {pitcher.projected_hr9:>6.2f}")
+                click.echo(f"    FIP:   {pitcher.projected_fip:>6.2f}")
+                click.echo(f"\n  COUNTING STATS (projected)")
+                click.echo(f"    W:     {pitcher.projected_wins:>6.0f}")
+                click.echo(f"    K:     {pitcher.projected_k:>6.0f}")
+                if pitcher.role in ("RP", "CL"):
+                    click.echo(f"    SV:    {pitcher.projected_saves:>6.0f}")
+                click.echo(f"\n  VALUE")
+                click.echo(f"    WAR:   {pitcher.projected_war:>6.1f}")
+
+    if not found:
+        click.echo(f"\nNo player found matching '{player_name}'")
+        click.echo("Try a partial name or check the spelling.")
+
+
 # =============================================================================
 # Projection Commands
 # =============================================================================
