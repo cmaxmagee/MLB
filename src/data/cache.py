@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Dict, Optional, TypeVar, Union
 
 import pandas as pd
 
@@ -21,7 +21,7 @@ class DataCache:
 
     def __init__(
         self,
-        cache_dir: Path | str = DEFAULT_CACHE_DIR,
+        cache_dir: Union[Path, str] = DEFAULT_CACHE_DIR,
         default_ttl_days: int = 7,
     ):
         """Initialize the cache.
@@ -36,7 +36,7 @@ class DataCache:
         self._metadata_file = self.cache_dir / "_metadata.json"
         self._metadata = self._load_metadata()
 
-    def _load_metadata(self) -> dict[str, Any]:
+    def _load_metadata(self) -> Dict[str, Any]:
         """Load cache metadata from disk."""
         if self._metadata_file.exists():
             with open(self._metadata_file) as f:
@@ -58,7 +58,7 @@ class DataCache:
         """Get the file path for a cache key."""
         return self.cache_dir / f"{key}.parquet"
 
-    def is_valid(self, key: str, ttl_days: int | None = None) -> bool:
+    def is_valid(self, key: str, ttl_days: Optional[int] = None) -> bool:
         """Check if a cached entry is still valid.
 
         Args:
@@ -76,7 +76,7 @@ class DataCache:
         expires_at = cached_at + timedelta(days=ttl)
         return datetime.now() < expires_at
 
-    def get(self, key: str) -> pd.DataFrame | None:
+    def get(self, key: str) -> Optional[pd.DataFrame]:
         """Retrieve a DataFrame from cache.
 
         Args:
@@ -115,7 +115,7 @@ class DataCache:
         self,
         name: str,
         fetch_fn: Callable[[], pd.DataFrame],
-        ttl_days: int | None = None,
+        ttl_days: Optional[int] = None,
         **params: Any,
     ) -> pd.DataFrame:
         """Get data from cache or fetch if not available/expired.
@@ -142,7 +142,7 @@ class DataCache:
         self.set(key, data, name=name, params=params)
         return data
 
-    def clear(self, older_than_days: int | None = None) -> int:
+    def clear(self, older_than_days: Optional[int] = None) -> int:
         """Clear cached data.
 
         Args:
@@ -173,7 +173,7 @@ class DataCache:
         logger.info(f"Cleared {cleared} cache entries")
         return cleared
 
-    def stats(self) -> dict[str, Any]:
+    def stats(self) -> Dict[str, Any]:
         """Get cache statistics.
 
         Returns:

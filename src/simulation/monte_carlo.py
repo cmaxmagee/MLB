@@ -6,7 +6,7 @@ for wins, division standings, and playoff odds.
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -70,10 +70,10 @@ class SeasonSimulation:
     """Complete season simulation results."""
 
     iterations: int
-    random_seed: int | None = None
-    team_results: dict[str, SimulationResult] = field(default_factory=dict)
-    division_winner_counts: dict[str, dict[str, int]] = field(default_factory=dict)
-    wild_card_counts: dict[str, int] = field(default_factory=dict)
+    random_seed: Optional[int] = None
+    team_results: Dict[str, SimulationResult] = field(default_factory=dict)
+    division_winner_counts: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    wild_card_counts: Dict[str, int] = field(default_factory=dict)
 
     def get_playoff_odds_df(self) -> pd.DataFrame:
         """Get playoff odds as a sorted DataFrame."""
@@ -93,10 +93,10 @@ class SeasonSimulation:
 
 
 def run_simulation(
-    team_projections: pd.DataFrame | dict[str, "TeamProjectionSet"],
+    team_projections: Union[pd.DataFrame, Dict[str, "TeamProjectionSet"]],
     iterations: int = DEFAULT_ITERATIONS,
     team_variance: float = TEAM_WIN_STDEV,
-    random_seed: int | None = None,
+    random_seed: Optional[int] = None,
     show_progress: bool = True,
 ) -> SeasonSimulation:
     """Run Monte Carlo simulation of the season.
@@ -190,10 +190,10 @@ def run_simulation(
 
 
 def run_simulation_with_player_variance(
-    team_projection_sets: dict[str, "TeamProjectionSet"],
+    team_projection_sets: Dict[str, "TeamProjectionSet"],
     iterations: int = DEFAULT_ITERATIONS,
     team_residual_std: float = 4.0,
-    random_seed: int | None = None,
+    random_seed: Optional[int] = None,
     show_progress: bool = True,
 ) -> SeasonSimulation:
     """Run simulation with player-level variance modeling.
@@ -310,13 +310,13 @@ def run_simulation_with_player_variance(
 def _calculate_playoff_odds(
     simulation: SeasonSimulation,
     team_projections: pd.DataFrame,
-    simulated_wins: dict[str, np.ndarray],
+    simulated_wins: Dict[str, np.ndarray],
     iterations: int,
 ) -> None:
     """Calculate division winner and wild card odds."""
 
     # Group teams by division
-    divisions: dict[str, list[str]] = {}
+    divisions: Dict[str, List[str]] = {}
     for _, row in team_projections.iterrows():
         div = row["division"]
         if div not in divisions:

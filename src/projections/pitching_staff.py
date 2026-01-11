@@ -6,6 +6,7 @@ handling innings overflow when starters underperform projections.
 
 import logging
 from dataclasses import dataclass, field
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -26,11 +27,11 @@ class PitchingStaffProjection:
     total_ip: float = TEAM_TOTAL_IP
 
     # Rotation
-    rotation: list[dict] = field(default_factory=list)
+    rotation: List[Dict] = field(default_factory=list)
     total_starter_ip: float = 0.0
 
     # Bullpen
-    bullpen: list[dict] = field(default_factory=list)
+    bullpen: List[Dict] = field(default_factory=list)
     total_bullpen_ip: float = 0.0
 
     # Overflow tracking
@@ -154,7 +155,7 @@ def calculate_team_runs_allowed(
     return total_runs
 
 
-def validate_innings_distribution(staff: PitchingStaffProjection) -> list[str]:
+def validate_innings_distribution(staff: PitchingStaffProjection) -> List[str]:
     """Validate a team's innings distribution.
 
     Args:

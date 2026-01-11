@@ -1,7 +1,7 @@
 """Pybaseball wrappers for fetching MLB data."""
 
 import logging
-from typing import Literal
+from typing import List, Literal, Optional
 
 import pandas as pd
 from pybaseball import (
@@ -27,9 +27,9 @@ _cache = DataCache(DEFAULT_CACHE_DIR)
 
 def fetch_batting_stats(
     start_year: int,
-    end_year: int | None = None,
+    end_year: Optional[int] = None,
     qual: int | str = "y",
-    cache: DataCache | None = None,
+    cache: Optional[DataCache] = None,
 ) -> pd.DataFrame:
     """Fetch batting statistics from FanGraphs.
 
@@ -67,9 +67,9 @@ def fetch_batting_stats(
 
 def fetch_pitching_stats(
     start_year: int,
-    end_year: int | None = None,
+    end_year: Optional[int] = None,
     qual: int | str = "y",
-    cache: DataCache | None = None,
+    cache: Optional[DataCache] = None,
 ) -> pd.DataFrame:
     """Fetch pitching statistics from FanGraphs.
 
@@ -106,8 +106,8 @@ def fetch_pitching_stats(
 
 def fetch_team_batting(
     start_year: int,
-    end_year: int | None = None,
-    cache: DataCache | None = None,
+    end_year: Optional[int] = None,
+    cache: Optional[DataCache] = None,
 ) -> pd.DataFrame:
     """Fetch team-level batting statistics.
 
@@ -138,8 +138,8 @@ def fetch_team_batting(
 
 def fetch_team_pitching(
     start_year: int,
-    end_year: int | None = None,
-    cache: DataCache | None = None,
+    end_year: Optional[int] = None,
+    cache: Optional[DataCache] = None,
 ) -> pd.DataFrame:
     """Fetch team-level pitching statistics.
 
@@ -170,7 +170,7 @@ def fetch_team_pitching(
 
 def fetch_team_rosters(
     year: int,
-    cache: DataCache | None = None,
+    cache: Optional[DataCache] = None,
 ) -> pd.DataFrame:
     """Fetch team rosters for a given year.
 
@@ -218,7 +218,7 @@ def fetch_team_rosters(
 
 def lookup_player(
     last_name: str,
-    first_name: str | None = None,
+    first_name: Optional[str] = None,
 ) -> pd.DataFrame:
     """Look up player ID by name.
 
@@ -235,7 +235,7 @@ def lookup_player(
 
 
 def lookup_player_by_id(
-    player_ids: list[int],
+    player_ids: List[int],
     id_type: Literal["fangraphs", "mlbam", "bbref"] = "fangraphs",
 ) -> pd.DataFrame:
     """Look up player info by ID.
@@ -260,7 +260,7 @@ def fetch_historical_player_stats(
     start_year: int,
     end_year: int,
     player_type: Literal["batter", "pitcher"] = "batter",
-    cache: DataCache | None = None,
+    cache: Optional[DataCache] = None,
 ) -> pd.DataFrame:
     """Fetch multi-year stats for a single player.
 

@@ -6,7 +6,7 @@ and applies Pythagorean expectation for win projections.
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -135,8 +135,8 @@ def pythag_exponent(runs_per_game: float) -> float:
 
 def project_team(
     team: str,
-    batter_projections: list["BatterProjection"],
-    pitcher_projections: list["PitcherProjection"],
+    batter_projections: List["BatterProjection"],
+    pitcher_projections: List["PitcherProjection"],
 ) -> TeamProjection:
     """Generate team projection from player projections.
 
@@ -346,7 +346,7 @@ def calculate_team_runs_allowed(
 
 
 def create_standings_dataframe(
-    team_projections: dict[str, TeamProjection],
+    team_projections: Dict[str, TeamProjection],
 ) -> pd.DataFrame:
     """Create standings DataFrame from team projections.
 

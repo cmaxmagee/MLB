@@ -7,7 +7,7 @@ regression to the mean, and aging curves.
 import logging
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Literal
+from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -115,7 +115,7 @@ class BatterProjection(PlayerProjection):
     position: Literal["Batter", "Pitcher"] = "Batter"
 
     # Position breakdown (for multi-position players)
-    positions_played: list[str] = field(default_factory=list)
+    positions_played: List[str] = field(default_factory=list)
     primary_position: str = "DH"
 
 
@@ -135,9 +135,9 @@ def calculate_weighted_average(
     stats: pd.DataFrame,
     stat_col: str,
     weight_col: str = "PA",
-    year_weights: list[float] | None = None,
+    year_weights: Optional[List[float]] = None,
     year_col: str = "Season",
-) -> tuple[float, int]:
+) -> Tuple[float, int]:
     """Calculate weighted average of a stat across seasons.
 
     Args:
@@ -256,8 +256,8 @@ def project_batter(
     player_id: int,
     historical_stats: pd.DataFrame,
     projection_year: int,
-    new_team: str | None = None,
-    year_weights: list[float] | None = None,
+    new_team: Optional[str] = None,
+    year_weights: Optional[List[float]] = None,
 ) -> BatterProjection:
     """Generate projection for a batter.
 
@@ -384,8 +384,8 @@ def project_pitcher(
     player_id: int,
     historical_stats: pd.DataFrame,
     projection_year: int,
-    new_team: str | None = None,
-    year_weights: list[float] | None = None,
+    new_team: Optional[str] = None,
+    year_weights: Optional[List[float]] = None,
 ) -> PitcherProjection:
     """Generate projection for a pitcher.
 
@@ -521,8 +521,8 @@ def project_player(
     historical_stats: pd.DataFrame,
     projection_year: int,
     player_type: Literal["batter", "pitcher"] = "batter",
-    new_team: str | None = None,
-    year_weights: list[float] | None = None,
+    new_team: Optional[str] = None,
+    year_weights: Optional[List[float]] = None,
 ) -> PlayerProjection:
     """Generate projection for a player (dispatcher function).
 
@@ -549,8 +549,8 @@ def project_player(
 
 def calculate_counting_stats(
     projection: PlayerProjection,
-    pa: float | None = None,
-    ip: float | None = None,
+    pa: Optional[float] = None,
+    ip: Optional[float] = None,
 ) -> PlayerProjection:
     """Calculate counting stats from rate stats and playing time.
 

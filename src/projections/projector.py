@@ -6,7 +6,7 @@ into a unified projection workflow.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Dict, List, Literal, Optional, Tuple
 
 import pandas as pd
 
@@ -40,7 +40,7 @@ class ProjectionConfig:
 
     projection_year: int = 2025
     historical_years: int = 3  # How many years of history to use
-    year_weights: list[float] = field(default_factory=lambda: [5, 4, 3])
+    year_weights: List[float] = field(default_factory=lambda: [5, 4, 3])
     min_pa: int = 50  # Minimum PA to include batter
     min_ip: float = 10.0  # Minimum IP to include pitcher
 
@@ -51,8 +51,8 @@ class TeamProjectionSet:
 
     team: str
     division: str
-    batters: list[BatterProjection] = field(default_factory=list)
-    pitchers: list[PitcherProjection] = field(default_factory=list)
+    batters: List[BatterProjection] = field(default_factory=list)
+    pitchers: List[PitcherProjection] = field(default_factory=list)
 
     # Aggregated stats
     total_batting_runs: float = 0.0
@@ -68,20 +68,20 @@ class Projector:
     Orchestrates data fetching, player projections, and team aggregation.
     """
 
-    def __init__(self, config: ProjectionConfig | None = None):
+    def __init__(self, config: Optional[ProjectionConfig] = None):
         """Initialize the projector.
 
         Args:
             config: Projection configuration. Uses defaults if not provided.
         """
         self.config = config or ProjectionConfig()
-        self._batting_cache: dict[int, pd.DataFrame] = {}
-        self._pitching_cache: dict[int, pd.DataFrame] = {}
+        self._batting_cache: Dict[int, pd.DataFrame] = {}
+        self._pitching_cache: Dict[int, pd.DataFrame] = {}
 
     def project_all_teams(
         self,
-        roster_changes: list[RosterChange] | None = None,
-    ) -> dict[str, TeamProjectionSet]:
+        roster_changes: Optional[List[RosterChange]] = None,
+    ) -> Dict[str, TeamProjectionSet]:
         """Generate projections for all 30 MLB teams.
 
         Args:
@@ -125,7 +125,7 @@ class Projector:
         team: str,
         all_batting: pd.DataFrame,
         all_pitching: pd.DataFrame,
-        roster_changes: list[RosterChange] | None = None,
+        roster_changes: Optional[List[RosterChange]] = None,
     ) -> TeamProjectionSet:
         """Generate projections for a single team.
 
@@ -280,7 +280,7 @@ class Projector:
         self,
         player_id: int,
         player_type: Literal["batter", "pitcher"],
-        new_team: str | None = None,
+        new_team: Optional[str] = None,
     ) -> PlayerProjection:
         """Generate projection for a single player.
 
@@ -339,8 +339,8 @@ class Projector:
 
 
 def projections_to_dataframe(
-    team_projections: dict[str, TeamProjectionSet],
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    team_projections: Dict[str, TeamProjectionSet],
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Convert team projections to DataFrames.
 
     Args:

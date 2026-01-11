@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 def generate_season_report(
     simulation: SeasonSimulation,
-    output_path: Path | str | None = None,
-    projection_year: int | None = None,
+    output_path: Optional[Union[Path, str]] = None,
+    projection_year: Optional[int] = None,
 ) -> str:
     """Generate a text report of season projections.
 
@@ -162,7 +162,7 @@ def generate_season_report(
 def generate_team_report(
     team: str,
     simulation: SeasonSimulation,
-    team_projection: "TeamProjectionSet | None" = None,
+    team_projection: "Optional[TeamProjectionSet]" = None,
 ) -> str:
     """Generate a detailed report for a single team.
 
@@ -257,7 +257,7 @@ def generate_team_report(
 
 def export_to_csv(
     simulation: SeasonSimulation,
-    output_path: Path | str,
+    output_path: Union[Path, str],
 ) -> None:
     """Export simulation results to CSV.
 
@@ -296,9 +296,9 @@ def export_to_csv(
 
 
 def export_player_projections_csv(
-    team_projections: dict[str, "TeamProjectionSet"],
-    output_dir: Path | str,
-) -> tuple[Path, Path]:
+    team_projections: Dict[str, "TeamProjectionSet"],
+    output_dir: Union[Path, str],
+) -> Tuple[Path, Path]:
     """Export player projections to CSV files.
 
     Args:

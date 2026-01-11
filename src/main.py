@@ -4,6 +4,7 @@
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 import click
 
@@ -92,7 +93,7 @@ def cache_stats():
 @cli.command()
 @click.option("--older-than", type=int, help="Only clear entries older than N days")
 @click.confirmation_option(prompt="Are you sure you want to clear the cache?")
-def clear_cache(older_than: int | None):
+def clear_cache(older_than: Optional[int]):
     """Clear cached data."""
     cache = DataCache()
     cleared = cache.clear(older_than_days=older_than)
@@ -137,10 +138,10 @@ def load_changes(roster_file: str):
 def project(
     year: int,
     iterations: int,
-    roster_changes: str | None,
+    roster_changes: Optional[str],
     output_dir: str,
     player_variance: bool,
-    seed: int | None,
+    seed: Optional[int],
 ):
     """Run full season projections with Monte Carlo simulation."""
     from .projections import Projector, ProjectionConfig
@@ -264,7 +265,7 @@ def project_team(team: str, year: int, iterations: int):
 @cli.command()
 @click.option("--year", "-y", default=2025, help="Projection year")
 @click.option("--output", "-o", type=click.Path(), help="Output PNG path")
-def plot_standings(year: int, output: str | None):
+def plot_standings(year: int, output: Optional[str]):
     """Generate standings visualization."""
     from .projections import Projector, ProjectionConfig
     from .simulation.monte_carlo import run_simulation

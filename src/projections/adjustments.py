@@ -7,7 +7,7 @@ Provides adjustment factors for player projections based on:
 """
 
 import logging
-from typing import Literal
+from typing import List, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -169,7 +169,7 @@ def adjust_for_park_change(
 def neutralize_stats(
     stats: pd.DataFrame,
     team_col: str = "Team",
-    stat_cols: list[str] | None = None,
+    stat_cols: Optional[List[str]] = None,
     stat_type: Literal["batting", "pitching"] = "batting",
 ) -> pd.DataFrame:
     """Neutralize stats to a neutral park environment.

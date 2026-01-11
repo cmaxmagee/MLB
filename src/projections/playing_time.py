@@ -6,7 +6,7 @@ based on historical patterns, role expectations, and age-based injury risk.
 
 import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -321,7 +321,7 @@ def project_playing_time(
     historical_stats: pd.DataFrame,
     player_type: Literal["batter", "pitcher"],
     age: int,
-    role_override: str | None = None,
+    role_override: Optional[str] = None,
 ) -> PlayingTimeProjection:
     """Project playing time for a player.
 
@@ -440,9 +440,9 @@ def project_playing_time(
 
 def allocate_team_playing_time(
     team: str,
-    batter_projections: list[PlayingTimeProjection],
-    pitcher_projections: list[PlayingTimeProjection],
-) -> tuple[list[PlayingTimeProjection], list[PlayingTimeProjection]]:
+    batter_projections: List[PlayingTimeProjection],
+    pitcher_projections: List[PlayingTimeProjection],
+) -> Tuple[List[PlayingTimeProjection], List[PlayingTimeProjection]]:
     """Allocate playing time across a team's roster.
 
     Ensures total PA and IP are realistic for a team.

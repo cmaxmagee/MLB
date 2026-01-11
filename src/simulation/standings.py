@@ -2,6 +2,7 @@
 
 import logging
 from dataclasses import dataclass, field
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -16,7 +17,7 @@ class DivisionStandings:
     """Projected standings for a division."""
 
     division: str
-    teams: list[dict] = field(default_factory=list)
+    teams: List[Dict] = field(default_factory=list)
 
     def __post_init__(self):
         # Sort by projected wins descending
@@ -28,11 +29,11 @@ class LeagueStandings:
     """Projected standings for a league."""
 
     league: str  # "AL" or "NL"
-    divisions: dict[str, DivisionStandings] = field(default_factory=dict)
-    wild_card_race: list[dict] = field(default_factory=list)
+    divisions: Dict[str, DivisionStandings] = field(default_factory=dict)
+    wild_card_race: List[Dict] = field(default_factory=list)
 
 
-def generate_standings(simulation: SeasonSimulation) -> dict[str, LeagueStandings]:
+def generate_standings(simulation: SeasonSimulation) -> Dict[str, LeagueStandings]:
     """Generate projected standings from simulation results.
 
     Args:
@@ -87,7 +88,7 @@ def generate_standings(simulation: SeasonSimulation) -> dict[str, LeagueStanding
     return standings
 
 
-def standings_to_dataframe(standings: dict[str, LeagueStandings]) -> pd.DataFrame:
+def standings_to_dataframe(standings: Dict[str, LeagueStandings]) -> pd.DataFrame:
     """Convert standings to a flat DataFrame.
 
     Args:

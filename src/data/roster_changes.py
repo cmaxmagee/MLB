@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, List, Optional, Union
 
 import pandas as pd
 
@@ -28,12 +28,12 @@ class RosterChange:
     """Represents a single roster change."""
 
     player_name: str
-    player_id: int | None  # FanGraphs ID if known
+    player_id: Optional[int]  # FanGraphs ID if known
     change_type: ChangeType
-    from_team: str | None  # None for signings from free agency
-    to_team: str | None  # None for retirements/releases
-    effective_date: date | None
-    notes: str | None = None
+    from_team: Optional[str]  # None for signings from free agency
+    to_team: Optional[str]  # None for retirements/releases
+    effective_date: Optional[date]
+    notes: Optional[str] = None
 
     def __post_init__(self) -> None:
         """Validate the roster change."""
@@ -50,9 +50,9 @@ class RosterChange:
 
 
 def load_roster_changes(
-    filepath: Path | str,
+    filepath: Union[Path, str],
     validate_players: bool = False,
-) -> list[RosterChange]:
+) -> List[RosterChange]:
     """Load roster changes from a CSV file.
 
     Expected CSV columns:
@@ -133,7 +133,7 @@ def load_roster_changes(
 
 def apply_roster_changes(
     base_roster: pd.DataFrame,
-    changes: list[RosterChange],
+    changes: List[RosterChange],
 ) -> pd.DataFrame:
     """Apply roster changes to a base roster.
 
@@ -191,7 +191,7 @@ def apply_roster_changes(
     return roster.reset_index(drop=True)
 
 
-def create_sample_roster_changes_csv(output_path: Path | str) -> None:
+def create_sample_roster_changes_csv(output_path: Union[Path, str]) -> None:
     """Create a sample roster changes CSV template.
 
     Args:
@@ -242,7 +242,7 @@ TEAM_ABBREVIATIONS = {
 }
 
 
-def standardize_team(team: str | None) -> str | None:
+def standardize_team(team: Optional[str]) -> Optional[str]:
     """Standardize team abbreviation.
 
     Args:

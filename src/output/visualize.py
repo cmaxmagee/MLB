@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -26,7 +27,7 @@ TEAM_COLORS = {
 def plot_win_distribution(
     team: str,
     simulation: SeasonSimulation,
-    save_path: Path | str | None = None,
+    save_path: Optional[Union[Path, str]] = None,
     show: bool = True,
 ) -> plt.Figure:
     """Plot win distribution histogram for a team.
@@ -78,7 +79,7 @@ def plot_win_distribution(
 def plot_division_standings(
     division: str,
     simulation: SeasonSimulation,
-    save_path: Path | str | None = None,
+    save_path: Optional[Union[Path, str]] = None,
     show: bool = True,
 ) -> plt.Figure:
     """Plot projected standings for a division.
@@ -148,7 +149,7 @@ def plot_division_standings(
 def plot_playoff_odds(
     simulation: SeasonSimulation,
     top_n: int = 15,
-    save_path: Path | str | None = None,
+    save_path: Optional[Union[Path, str]] = None,
     show: bool = True,
 ) -> plt.Figure:
     """Plot playoff odds for top contenders.
