@@ -124,6 +124,145 @@ def load_changes(roster_file: str):
                    f"({change.from_team or 'FA'} -> {change.to_team or 'N/A'})")
 
 
+@cli.command()
+@click.option("--year", "-y", default=2025, help="Historical data year to compare against")
+@click.option("--output", "-o", type=click.Path(), default="data/roster_changes/synced_changes.csv",
+              help="Output CSV path")
+def sync_rosters(year: int, output: str):
+    """Sync current MLB rosters and generate roster changes CSV.
+
+    Fetches current 40-man rosters from MLB's official API and compares
+    them against historical FanGraphs data to identify:
+    - Players who changed teams (trades/signings)
+    - New players (call-ups, international signings)
+
+    The generated CSV can be used with the 'project' command's --roster-changes option.
+    """
+    from .data.mlb_api import sync_rosters_to_csv, check_api_available
+
+    if not check_api_available():
+        click.echo("Error: MLB-StatsAPI not installed.", err=True)
+        click.echo("Run: pip install MLB-StatsAPI", err=True)
+        sys.exit(1)
+
+    click.echo(f"\n{'='*60}")
+    click.echo("  MLB Roster Sync")
+    click.echo(f"{'='*60}")
+    click.echo(f"Comparing current rosters against {year} data...\n")
+
+    # Fetch historical data for comparison
+    click.echo("Fetching historical batting stats...")
+    batting = fetch_batting_stats(year, qual=1)
+    click.echo(f"  Found {len(batting)} batters")
+
+    click.echo("Fetching historical pitching stats...")
+    pitching = fetch_pitching_stats(year, qual=1)
+    click.echo(f"  Found {len(pitching)} pitchers")
+
+    # Sync rosters
+    click.echo("\nFetching current 40-man rosters from MLB API...")
+    num_changes, output_path = sync_rosters_to_csv(
+        historical_batting=batting,
+        historical_pitching=pitching,
+        output_path=Path(output),
+    )
+
+    click.echo(f"\n{'='*60}")
+    click.echo(f"  Sync Complete!")
+    click.echo(f"{'='*60}")
+    click.echo(f"Identified {num_changes} roster changes")
+    click.echo(f"Saved to: {output_path}")
+    click.echo(f"\nTo use in projections:")
+    click.echo(f"  python -m src.main project --year {year + 1} --roster-changes {output_path}")
+
+
+@cli.command()
+@click.argument("team", type=str)
+def show_roster(team: str):
+    """Show current 40-man roster for a team.
+
+    TEAM is the team abbreviation (e.g., NYY, LAD, BOS).
+    """
+    from .data.mlb_api import fetch_current_roster, check_api_available
+
+    if not check_api_available():
+        click.echo("Error: MLB-StatsAPI not installed.", err=True)
+        click.echo("Run: pip install MLB-StatsAPI", err=True)
+        sys.exit(1)
+
+    team = team.upper()
+    click.echo(f"\nFetching {team} 40-man roster...")
+
+    roster = fetch_current_roster(team)
+
+    if not roster:
+        click.echo(f"Could not fetch roster for {team}", err=True)
+        sys.exit(1)
+
+    click.echo(f"\n{team} 40-Man Roster ({len(roster)} players):")
+    click.echo("-" * 50)
+
+    # Group by position
+    pitchers = [p for p in roster if p.position in ["P", "SP", "RP"]]
+    catchers = [p for p in roster if p.position == "C"]
+    infielders = [p for p in roster if p.position in ["1B", "2B", "3B", "SS", "IF"]]
+    outfielders = [p for p in roster if p.position in ["LF", "CF", "RF", "OF"]]
+    other = [p for p in roster if p not in pitchers + catchers + infielders + outfielders]
+
+    for group_name, group in [
+        ("Pitchers", pitchers),
+        ("Catchers", catchers),
+        ("Infielders", infielders),
+        ("Outfielders", outfielders),
+        ("Other", other),
+    ]:
+        if group:
+            click.echo(f"\n{group_name}:")
+            for p in sorted(group, key=lambda x: x.name):
+                status = f" ({p.status})" if p.status != "Active" else ""
+                click.echo(f"  {p.name:<25} {p.position:<4}{status}")
+
+
+@cli.command()
+@click.option("--days", "-d", default=90, help="Number of days of transactions to fetch")
+def show_transactions(days: int):
+    """Show recent MLB transactions."""
+    from datetime import date, timedelta
+    from .data.mlb_api import fetch_transactions, check_api_available
+
+    if not check_api_available():
+        click.echo("Error: MLB-StatsAPI not installed.", err=True)
+        click.echo("Run: pip install MLB-StatsAPI", err=True)
+        sys.exit(1)
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=days)
+
+    click.echo(f"\nFetching transactions from {start_date} to {end_date}...")
+
+    txns = fetch_transactions(start_date, end_date)
+
+    if txns.empty:
+        click.echo("No transactions found")
+        return
+
+    click.echo(f"\nFound {len(txns)} transactions:\n")
+
+    # Show most recent 50
+    for _, row in txns.head(50).iterrows():
+        from_team = row.get("from_team", "")
+        to_team = row.get("to_team", "")
+        teams = ""
+        if from_team and to_team:
+            teams = f"{from_team} -> {to_team}"
+        elif to_team:
+            teams = f"-> {to_team}"
+        elif from_team:
+            teams = f"{from_team} ->"
+
+        click.echo(f"{row['date']}: {row['player_name']:<25} {row['type']:<20} {teams}")
+
+
 # =============================================================================
 # Projection Commands
 # =============================================================================

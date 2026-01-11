@@ -2,6 +2,7 @@
 
 # Data retrieval
 pybaseball>=2.2.7
+MLB-StatsAPI>=1.7.0  # Official MLB API for current rosters
 
 # Data manipulation
 pandas>=2.0.0
