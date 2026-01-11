@@ -296,10 +296,10 @@ def sync_rosters_to_csv(
         logger.error("Failed to fetch rosters")
         return 0, output_path
 
-    # Combine historical data
+    # Combine historical data (pybaseball uses IDfg for player ID)
     historical_players = pd.concat([
-        historical_batting[["Name", "Team", "playerid"]].drop_duplicates(),
-        historical_pitching[["Name", "Team", "playerid"]].drop_duplicates(),
+        historical_batting[["Name", "Team", "IDfg"]].drop_duplicates(),
+        historical_pitching[["Name", "Team", "IDfg"]].drop_duplicates(),
     ]).drop_duplicates(subset=["Name"])
 
     # Get most recent team for each player
@@ -307,8 +307,8 @@ def sync_rosters_to_csv(
     most_recent_pitching = historical_pitching.sort_values("Season", ascending=False)
 
     recent_teams = pd.concat([
-        most_recent_batting.groupby("Name").first()[["Team", "playerid"]].reset_index(),
-        most_recent_pitching.groupby("Name").first()[["Team", "playerid"]].reset_index(),
+        most_recent_batting.groupby("Name").first()[["Team", "IDfg"]].reset_index(),
+        most_recent_pitching.groupby("Name").first()[["Team", "IDfg"]].reset_index(),
     ]).drop_duplicates(subset=["Name"])
 
     # Compare and generate changes
