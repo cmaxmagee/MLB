@@ -271,7 +271,8 @@ def show_transactions(days: int):
 @click.argument("player_name", type=str)
 @click.option("--year", "-y", default=2026, help="Projection year")
 @click.option("--team", "-t", type=str, help="Filter by team (abbreviation)")
-def show_player(player_name: str, year: int, team: Optional[str]):
+@click.option("--roster-changes", "-r", type=click.Path(exists=True), help="Roster changes CSV")
+def show_player(player_name: str, year: int, team: Optional[str], roster_changes: Optional[str]):
     """Show projected stats for a player."""
     from .projections import Projector, ProjectionConfig
 
@@ -280,9 +281,15 @@ def show_player(player_name: str, year: int, team: Optional[str]):
     config = ProjectionConfig(projection_year=year, historical_years=3)
     projector = Projector(config)
 
+    # Load roster changes if provided
+    changes = None
+    if roster_changes:
+        changes = load_roster_changes(roster_changes)
+        click.echo(f"  Applied {len(changes)} roster changes")
+
     # Search through all teams for the player
     team_filter = team.upper() if team else None
-    team_projections = projector.project_all_teams()
+    team_projections = projector.project_all_teams(roster_changes=changes)
 
     found = False
     for team_abbrev, team_proj in team_projections.items():
