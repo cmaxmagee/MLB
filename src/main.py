@@ -306,13 +306,17 @@ def show_player(player_name: str, year: int, team: Optional[str]):
                 click.echo(f"    SLG:   {batter.projected_slg:>6.3f}")
                 click.echo(f"    OPS:   {batter.projected_obp + batter.projected_slg:>6.3f}")
                 click.echo(f"    wOBA:  {batter.projected_woba:>6.3f}")
+                click.echo(f"    wRC+:  {batter.projected_wrc_plus:>6.0f}")
                 click.echo(f"\n  COUNTING STATS (projected)")
                 click.echo(f"    HR:    {batter.projected_hr:>6.0f}")
                 click.echo(f"    RBI:   {batter.projected_rbi:>6.0f}")
                 click.echo(f"    R:     {batter.projected_runs:>6.0f}")
                 click.echo(f"    SB:    {batter.projected_sb:>6.0f}")
                 click.echo(f"\n  VALUE")
-                click.echo(f"    WAR:   {batter.projected_war:>6.1f}")
+                click.echo(f"    Batting Runs: {batter.projected_batting_runs:>6.1f}")
+                # Rough WAR estimate: ~10 runs = 1 WAR
+                est_war = batter.projected_batting_runs / 10 + 2.0  # +2 for replacement level
+                click.echo(f"    Est. WAR:     {est_war:>6.1f}")
 
         # Search pitchers
         for pitcher in team_proj.pitchers:
@@ -330,17 +334,20 @@ def show_player(player_name: str, year: int, team: Optional[str]):
                 click.echo(f"\n  RATE STATS")
                 click.echo(f"    ERA:   {pitcher.projected_era:>6.2f}")
                 click.echo(f"    WHIP:  {pitcher.projected_whip:>6.2f}")
-                click.echo(f"    K/9:   {pitcher.projected_k9:>6.1f}")
-                click.echo(f"    BB/9:  {pitcher.projected_bb9:>6.1f}")
-                click.echo(f"    HR/9:  {pitcher.projected_hr9:>6.2f}")
+                click.echo(f"    K/9:   {pitcher.projected_k_per_9:>6.1f}")
+                click.echo(f"    BB/9:  {pitcher.projected_bb_per_9:>6.1f}")
+                click.echo(f"    HR/9:  {pitcher.projected_hr_per_9:>6.2f}")
                 click.echo(f"    FIP:   {pitcher.projected_fip:>6.2f}")
                 click.echo(f"\n  COUNTING STATS (projected)")
                 click.echo(f"    W:     {pitcher.projected_wins:>6.0f}")
-                click.echo(f"    K:     {pitcher.projected_k:>6.0f}")
+                click.echo(f"    K:     {pitcher.projected_strikeouts:>6.0f}")
                 if pitcher.role in ("RP", "CL"):
                     click.echo(f"    SV:    {pitcher.projected_saves:>6.0f}")
                 click.echo(f"\n  VALUE")
-                click.echo(f"    WAR:   {pitcher.projected_war:>6.1f}")
+                click.echo(f"    Pitching Runs: {pitcher.projected_pitching_runs:>6.1f}")
+                # Rough WAR estimate: ~10 runs = 1 WAR
+                est_war = -pitcher.projected_pitching_runs / 10 + 2.0  # Negative because runs prevented
+                click.echo(f"    Est. WAR:      {est_war:>6.1f}")
 
     if not found:
         click.echo(f"\nNo player found matching '{player_name}'")
