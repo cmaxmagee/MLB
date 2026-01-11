@@ -45,13 +45,24 @@ Build a Monte Carlo simulation system that projects MLB season outcomes based on
 - Use weighted average of recent seasons (weight recent years more heavily)
 - Apply **regression to the mean** for small sample sizes
 - Implement basic **aging curves** (peak age ~27, gradual decline after)
-- Account for **park factors** when players change teams
+- Account for **park factors** when players change teams (use FanGraphs park factors as primary source)
+- **Playing time projections**: Project PA for hitters and IP for pitchers based on:
+  - Historical playing time patterns
+  - Role expectations (starter vs bench, rotation vs bullpen)
+  - Age-based injury risk adjustments
 
 ### Team Projections
-- Sum projected player WAR or runs above average
-- Convert to team runs scored/allowed
+- Use **runs-based approach** (not WAR) to avoid replacement-level assumptions:
+  - Hitters: Project wRC (weighted runs created) based on wRC+ and projected PA
+  - Pitchers: Project runs allowed using FIP-based runs and projected IP
+- Convert to team runs scored/allowed by summing individual contributions
 - Apply Pythagorean expectation for win projection
 - Add variance for Monte Carlo simulation based on historical team-level randomness
+
+### Pitching Staff Modeling
+- **Starting rotation**: Distribute ~1000 team IP among projected starters based on role and durability
+- **Bullpen**: Allocate remaining ~450 IP across relievers, weighted by leverage expectations
+- Account for innings overflow when starters underperform projections
 
 ## Technical Stack
 
@@ -61,6 +72,19 @@ Build a Monte Carlo simulation system that projects MLB season outcomes based on
 - **Simulation**: numpy for Monte Carlo
 - **Visualization**: matplotlib or plotly for distributions
 - **CLI or simple UI**: Start with CLI, consider Streamlit for v2
+
+### Core Dependencies
+
+```
+# requirements.txt
+pybaseball>=2.2.7
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+scipy>=1.10.0        # for statistical distributions
+tqdm>=4.65.0         # progress bars for simulations
+click>=8.1.0         # CLI framework
+```
 
 ## Project Structure
 
@@ -73,6 +97,8 @@ baseball-predictor/
 │   │   └── roster_changes.py # parse roster change inputs
 │   ├── projections/
 │   │   ├── player.py         # individual player projections
+│   │   ├── playing_time.py   # PA/IP projections by role
+│   │   ├── pitching_staff.py # rotation/bullpen innings allocation
 │   │   ├── team.py           # aggregate to team level
 │   │   └── adjustments.py    # aging curves, park factors, regression
 │   ├── simulation/
@@ -102,15 +128,19 @@ baseball-predictor/
 - Add regression to the mean
 - Implement aging curves
 - Add park factor adjustments
+- **Project playing time** (PA/IP) for each player based on role and history
 
 ### Phase 3: Team Projections
 - Aggregate player projections to team level
 - Implement Pythagorean expectation
+- Model pitching staff innings distribution (rotation + bullpen)
 - Validate against recent seasons
 
 ### Phase 4: Monte Carlo Simulation
-- Add variance modeling
-- Run bulk simulations
+- **Variance modeling** with two components:
+  - *Player-level variance*: Based on historical year-to-year consistency (some players are volatile, others stable)
+  - *Team-level residual variance*: ~6-8 wins of unexplained variance even after accounting for player performance
+- Run bulk simulations (10,000 iterations default)
 - Compute playoff odds and confidence intervals
 
 ### Phase 5: Output & Polish
