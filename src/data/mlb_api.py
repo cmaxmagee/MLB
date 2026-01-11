@@ -186,14 +186,31 @@ def fetch_transactions(
                     from_team = txn.get("fromTeam", {})
                     to_team = txn.get("toTeam", {})
 
+                    # Try multiple ways to get player name
+                    description = txn.get("description", "")
+                    player_name = (
+                        player.get("fullName") or
+                        player.get("name") or
+                        txn.get("person", {}).get("fullName") or
+                        txn.get("name") or
+                        # Parse from description (usually starts with player name)
+                        (description.split(" signed")[0] if " signed" in description else None) or
+                        (description.split(" traded")[0] if " traded" in description else None) or
+                        (description.split(" claimed")[0] if " claimed" in description else None) or
+                        (description.split(" designated")[0] if " designated" in description else None) or
+                        (description.split(" outrighted")[0] if " outrighted" in description else None) or
+                        (description.split(" released")[0] if " released" in description else None) or
+                        (description.split(" assigned")[0] if " assigned" in description else None)
+                    )
+
                     all_transactions.append({
                         "date": txn_date_str,
                         "type": txn.get("typeDesc"),
-                        "player_name": player.get("fullName"),
+                        "player_name": player_name,
                         "player_id": player.get("id"),
                         "from_team": MLB_TEAM_IDS.get(from_team.get("id"), ""),
                         "to_team": MLB_TEAM_IDS.get(to_team.get("id"), ""),
-                        "description": txn.get("description", ""),
+                        "description": description,
                     })
             except Exception as team_err:
                 logger.debug(f"Error fetching transactions for {team_abbrev}: {team_err}")
