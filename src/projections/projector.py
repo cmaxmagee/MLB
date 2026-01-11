@@ -29,7 +29,7 @@ from .playing_time import (
     project_playing_time,
     allocate_team_playing_time,
 )
-from .adjustments import TEAM_TO_DIVISION
+from .team import TEAM_TO_DIVISION
 
 logger = logging.getLogger(__name__)
 
