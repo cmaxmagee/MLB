@@ -162,30 +162,44 @@ def fetch_transactions(
         start_date = date(end_date.year - 1, 11, 1)  # Start of offseason
 
     try:
-        # Format dates for API
-        start_str = start_date.strftime("%m/%d/%Y")
-        end_str = end_date.strftime("%m/%d/%Y")
+        # Fetch transactions per team (more reliable than date-range query)
+        all_transactions = []
 
-        transactions = statsapi.get(
-            "transactions",
-            {"startDate": start_str, "endDate": end_str}
-        )
+        for team_id, team_abbrev in MLB_TEAM_IDS.items():
+            try:
+                transactions = statsapi.get(
+                    "transactions",
+                    {"teamId": team_id}
+                )
 
-        rows = []
-        for txn in transactions.get("transactions", []):
-            player = txn.get("player", {})
-            from_team = txn.get("fromTeam", {})
-            to_team = txn.get("toTeam", {})
+                for txn in transactions.get("transactions", []):
+                    txn_date_str = txn.get("date", "")
+                    if txn_date_str:
+                        try:
+                            txn_date = datetime.strptime(txn_date_str, "%Y-%m-%d").date()
+                            if not (start_date <= txn_date <= end_date):
+                                continue
+                        except ValueError:
+                            continue
 
-            rows.append({
-                "date": txn.get("date"),
-                "type": txn.get("typeDesc"),
-                "player_name": player.get("fullName"),
-                "player_id": player.get("id"),
-                "from_team": MLB_TEAM_IDS.get(from_team.get("id"), ""),
-                "to_team": MLB_TEAM_IDS.get(to_team.get("id"), ""),
-                "description": txn.get("description", ""),
-            })
+                    player = txn.get("player", {})
+                    from_team = txn.get("fromTeam", {})
+                    to_team = txn.get("toTeam", {})
+
+                    all_transactions.append({
+                        "date": txn_date_str,
+                        "type": txn.get("typeDesc"),
+                        "player_name": player.get("fullName"),
+                        "player_id": player.get("id"),
+                        "from_team": MLB_TEAM_IDS.get(from_team.get("id"), ""),
+                        "to_team": MLB_TEAM_IDS.get(to_team.get("id"), ""),
+                        "description": txn.get("description", ""),
+                    })
+            except Exception as team_err:
+                logger.debug(f"Error fetching transactions for {team_abbrev}: {team_err}")
+                continue
+
+        rows = all_transactions
 
         df = pd.DataFrame(rows)
         logger.info(f"Fetched {len(df)} transactions from {start_date} to {end_date}")

@@ -238,7 +238,7 @@ def show_transactions(days: int):
     end_date = date.today()
     start_date = end_date - timedelta(days=days)
 
-    click.echo(f"\nFetching transactions from {start_date} to {end_date}...")
+    click.echo(f"\nFetching transactions from {start_date} to {end_date} (scanning all 30 teams)...")
 
     txns = fetch_transactions(start_date, end_date)
 
