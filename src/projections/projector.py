@@ -100,6 +100,12 @@ class Projector:
         batting_stats = fetch_batting_stats(start_year, end_year, qual=self.config.min_pa)
         pitching_stats = fetch_pitching_stats(start_year, end_year, qual=self.config.min_ip)
 
+        # Apply roster changes to update player teams
+        if roster_changes:
+            logger.info(f"Applying {len(roster_changes)} roster changes...")
+            batting_stats = self._apply_roster_changes_to_stats(batting_stats, roster_changes, end_year)
+            pitching_stats = self._apply_roster_changes_to_stats(pitching_stats, roster_changes, end_year)
+
         # Get most recent year's rosters as baseline
         most_recent_batting = batting_stats[batting_stats["Season"] == end_year]
         most_recent_pitching = pitching_stats[pitching_stats["Season"] == end_year]
@@ -275,6 +281,52 @@ class Projector:
             projected_runs_allowed=projected_runs_allowed,
             projected_wins=projected_wins,
         )
+
+    def _apply_roster_changes_to_stats(
+        self,
+        stats: pd.DataFrame,
+        roster_changes: List[RosterChange],
+        most_recent_year: int,
+    ) -> pd.DataFrame:
+        """Apply roster changes to update player team assignments.
+
+        Args:
+            stats: DataFrame with player stats (must have Name, Team, Season, IDfg columns).
+            roster_changes: List of roster changes to apply.
+            most_recent_year: The most recent season year in the data.
+
+        Returns:
+            Updated DataFrame with players moved to their new teams.
+        """
+        from ..data.roster_changes import ChangeType
+
+        stats = stats.copy()
+
+        for change in roster_changes:
+            if change.change_type not in (ChangeType.TRADE, ChangeType.SIGNING):
+                continue
+
+            if not change.to_team:
+                continue
+
+            # Find player by name (case-insensitive)
+            name_mask = stats["Name"].str.lower() == change.player_name.lower()
+
+            # Also try matching by player ID if available
+            if change.player_id:
+                id_col = "IDfg" if "IDfg" in stats.columns else "playerid"
+                id_mask = stats[id_col] == change.player_id
+                mask = name_mask | id_mask
+            else:
+                mask = name_mask
+
+            if mask.any():
+                # Update team for most recent year's stats
+                year_mask = stats["Season"] == most_recent_year
+                stats.loc[mask & year_mask, "Team"] = change.to_team
+                logger.debug(f"Moved {change.player_name} to {change.to_team}")
+
+        return stats
 
     def project_single_player(
         self,
