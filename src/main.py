@@ -281,12 +281,12 @@ def show_player(player_name: str, year: int, team: Optional[str]):
     projector = Projector(config)
 
     # Search through all teams for the player
-    team_list = [team.upper()] if team else None
+    team_filter = team.upper() if team else None
     team_projections = projector.project_all_teams()
 
     found = False
-    for team_proj in team_projections:
-        if team_list and team_proj.team not in team_list:
+    for team_abbrev, team_proj in team_projections.items():
+        if team_filter and team_abbrev != team_filter:
             continue
 
         # Search batters
