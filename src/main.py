@@ -250,8 +250,8 @@ def show_transactions(days: int):
 
     # Show most recent 50
     for _, row in txns.head(50).iterrows():
-        from_team = row.get("from_team", "")
-        to_team = row.get("to_team", "")
+        from_team = row.get("from_team", "") or ""
+        to_team = row.get("to_team", "") or ""
         teams = ""
         if from_team and to_team:
             teams = f"{from_team} -> {to_team}"
@@ -260,7 +260,11 @@ def show_transactions(days: int):
         elif from_team:
             teams = f"{from_team} ->"
 
-        click.echo(f"{row['date']}: {row['player_name']:<25} {row['type']:<20} {teams}")
+        # Handle None values in display
+        txn_date = row.get("date", "") or ""
+        player_name = row.get("player_name", "") or "Unknown"
+        txn_type = row.get("type", "") or ""
+        click.echo(f"{txn_date}: {player_name:<25} {txn_type:<20} {teams}")
 
 
 # =============================================================================
