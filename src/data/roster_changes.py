@@ -85,11 +85,19 @@ def load_roster_changes(
 
     changes = []
     for _, row in df.iterrows():
+        # Skip rows with missing player_name
+        if pd.isna(row.get("player_name")):
+            continue
+
+        player_name = str(row["player_name"]).strip()
+        if not player_name:
+            continue
+
         try:
-            change_type = ChangeType(row["change_type"].lower().strip())
+            change_type = ChangeType(str(row["change_type"]).lower().strip())
         except ValueError:
             logger.warning(
-                f"Unknown change type '{row['change_type']}' for {row['player_name']}"
+                f"Unknown change type '{row['change_type']}' for {player_name}"
             )
             continue
 
@@ -100,12 +108,12 @@ def load_roster_changes(
             else None
         )
         from_team = (
-            row["from_team"].strip().upper()
+            str(row["from_team"]).strip().upper()
             if pd.notna(row.get("from_team"))
             else None
         )
         to_team = (
-            row["to_team"].strip().upper()
+            str(row["to_team"]).strip().upper()
             if pd.notna(row.get("to_team"))
             else None
         )
@@ -114,10 +122,10 @@ def load_roster_changes(
             if pd.notna(row.get("effective_date"))
             else None
         )
-        notes = row.get("notes") if pd.notna(row.get("notes")) else None
+        notes = str(row.get("notes")) if pd.notna(row.get("notes")) else None
 
         change = RosterChange(
-            player_name=row["player_name"].strip(),
+            player_name=player_name,
             player_id=player_id,
             change_type=change_type,
             from_team=from_team,
