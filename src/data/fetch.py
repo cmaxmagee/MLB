@@ -1,7 +1,7 @@
 """Pybaseball wrappers for fetching MLB data."""
 
 import logging
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 import pandas as pd
 from pybaseball import (
@@ -28,7 +28,7 @@ _cache = DataCache(DEFAULT_CACHE_DIR)
 def fetch_batting_stats(
     start_year: int,
     end_year: Optional[int] = None,
-    qual: int | str = "y",
+    qual: Union[int, str] = "y",
     cache: Optional[DataCache] = None,
 ) -> pd.DataFrame:
     """Fetch batting statistics from FanGraphs.
@@ -68,7 +68,7 @@ def fetch_batting_stats(
 def fetch_pitching_stats(
     start_year: int,
     end_year: Optional[int] = None,
-    qual: int | str = "y",
+    qual: Union[int, str] = "y",
     cache: Optional[DataCache] = None,
 ) -> pd.DataFrame:
     """Fetch pitching statistics from FanGraphs.
