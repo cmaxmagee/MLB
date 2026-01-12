@@ -371,6 +371,7 @@ def show_player(player_name: str, year: int, team: Optional[str], roster_changes
 @click.option("--roster-changes", "-r", type=click.Path(exists=True), help="Roster changes CSV")
 @click.option("--output-dir", "-o", type=click.Path(), default="output", help="Output directory")
 @click.option("--player-variance/--no-player-variance", default=False, help="Use player-level variance")
+@click.option("--auto-sync/--no-auto-sync", default=False, help="Auto-sync rosters from MLB API")
 @click.option("--seed", type=int, help="Random seed for reproducibility")
 def project(
     year: int,
@@ -378,6 +379,7 @@ def project(
     roster_changes: Optional[str],
     output_dir: str,
     player_variance: bool,
+    auto_sync: bool,
     seed: Optional[int],
 ):
     """Run full season projections with Monte Carlo simulation."""
@@ -393,6 +395,7 @@ def project(
     click.echo(f"{'='*60}")
     click.echo(f"Simulations: {iterations:,}")
     click.echo(f"Player variance: {'Yes' if player_variance else 'No'}")
+    click.echo(f"Auto-sync rosters: {'Yes' if auto_sync else 'No'}")
     if seed:
         click.echo(f"Random seed: {seed}")
     click.echo()
@@ -401,6 +404,7 @@ def project(
     config = ProjectionConfig(
         projection_year=year,
         historical_years=3,
+        auto_sync_rosters=auto_sync,
     )
 
     # Generate projections

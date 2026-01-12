@@ -1,5 +1,46 @@
 # Baseball Season Prediction Model
 
+## Quick Start
+
+```bash
+# Pull latest changes
+git pull
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run projections with roster changes and player variance
+python -m src.main project --year 2026 -r data/roster_changes/synced_changes.csv --player-variance
+
+# Or with auto-sync from MLB API (fetches current rosters automatically)
+python -m src.main project --year 2026 --auto-sync --player-variance
+
+# Generate synced roster changes CSV first (optional)
+python -m src.main sync-rosters --year 2025 -o data/roster_changes/synced_changes.csv
+```
+
+### CLI Options for `project` Command
+
+| Option | Description |
+|--------|-------------|
+| `--year`, `-y` | Projection year (default: 2025) |
+| `--iterations`, `-n` | Number of Monte Carlo simulations (default: 10,000) |
+| `--roster-changes`, `-r` | Path to roster changes CSV |
+| `--auto-sync` | Auto-fetch current rosters from MLB API |
+| `--player-variance` | Use player-level variance (more realistic) |
+| `--output-dir`, `-o` | Output directory (default: output/) |
+| `--seed` | Random seed for reproducibility |
+
+### Output Files
+
+After running projections, you'll find in `output/`:
+- `projection_2026.txt` - Full text report with standings and playoff odds
+- `standings_2026.csv` - Team projections CSV (includes SOS data)
+- `projected_batters.csv` - Individual batter projections
+- `projected_pitchers.csv` - Individual pitcher projections
+
+---
+
 ## Project Overview
 
 Build a Monte Carlo simulation system that projects MLB season outcomes based on roster changes and historical player performance data.
@@ -89,18 +130,20 @@ click>=8.1.0         # CLI framework
 ## Project Structure
 
 ```
-baseball-predictor/
+MLB/
 ├── src/
 │   ├── data/
 │   │   ├── fetch.py          # pybaseball wrappers
 │   │   ├── cache.py          # local caching of fetched data
+│   │   ├── mlb_api.py        # MLB Stats API for current rosters
 │   │   └── roster_changes.py # parse roster change inputs
 │   ├── projections/
 │   │   ├── player.py         # individual player projections
 │   │   ├── playing_time.py   # PA/IP projections by role
-│   │   ├── pitching_staff.py # rotation/bullpen innings allocation
 │   │   ├── team.py           # aggregate to team level
-│   │   └── adjustments.py    # aging curves, park factors, regression
+│   │   ├── schedule.py       # strength of schedule calculations
+│   │   ├── adjustments.py    # aging curves, park factors, regression
+│   │   └── projector.py      # main projection orchestrator
 │   ├── simulation/
 │   │   ├── monte_carlo.py    # run season simulations
 │   │   └── standings.py      # compute standings, playoff odds
@@ -112,8 +155,11 @@ baseball-predictor/
 │   ├── roster_changes/       # input CSV files
 │   └── cache/                # cached API responses
 ├── tests/
+│   ├── test_projections.py   # projection unit tests
+│   ├── test_schedule.py      # SOS calculation tests
+│   └── test_roster_sync.py   # roster sync tests
 ├── requirements.txt
-└── README.md
+└── claude.md                 # this file
 ```
 
 ## Development Phases
@@ -154,11 +200,37 @@ baseball-predictor/
 - Compare projection accuracy to public systems (ZiPS, Steamer)
 - Check calibration of probability estimates
 
+## Implemented Features
+
+### Strength of Schedule (SOS)
+Adjusts win projections based on opponent quality:
+- Calculates weighted SOS from divisional (52 games), league (66 games), and interleague (44 games) opponents
+- Applies win adjustment (~1-3 wins) based on schedule difficulty
+- Teams in tough divisions (AL East) get adjusted down, weak divisions adjusted up
+
+### Automatic Roster Sync
+Fetches current rosters from MLB Stats API:
+- `--auto-sync` flag on project command
+- Compares current 40-man rosters to historical data
+- Detects trades, signings, and team changes automatically
+- Manual roster changes CSV takes precedence over auto-detected changes
+
+### Prospect Detection
+Automatically identifies and boosts playing time for young breakout players:
+- Detects players <25 years old with <900 career PA
+- Boosts playing time if performance warrants it
+- Separate logic for batters vs pitchers
+
+### Park Factor Adjustments
+Adjusts projections when players change teams:
+- Uses FanGraphs park factors
+- Applies adjustment to batting stats for team changes
+
 ## Out of Scope (for v1)
 
 - In-season updates
-- Injury projections
-- Minor league/prospect integration
+- Injury projections (beyond age-based decline)
+- Full minor league/prospect integration
 - Trade deadline simulation
 - Game-by-game simulation
 - Web interface (Streamlit could be v2)
