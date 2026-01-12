@@ -5,6 +5,7 @@ to keep projections up-to-date with offseason moves.
 """
 
 import logging
+import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -64,6 +65,21 @@ def normalize_team_abbrev(team: str) -> str:
         return team
     team_upper = team.upper().strip()
     return FANGRAPHS_TO_MLB_ABBREV.get(team_upper, team_upper)
+
+
+def normalize_name(name: str) -> str:
+    """Normalize player name for comparison.
+
+    Removes accents and special characters to ensure matching between
+    different data sources (e.g., "Félix" -> "Felix", "Pagán" -> "Pagan").
+    """
+    if not name:
+        return ""
+    # Normalize unicode to decomposed form (separates base char from accent)
+    # Then encode to ASCII, ignoring non-ASCII characters
+    normalized = unicodedata.normalize("NFD", name)
+    ascii_name = normalized.encode("ascii", "ignore").decode("ascii")
+    return ascii_name.lower().strip()
 
 
 @dataclass
@@ -263,14 +279,16 @@ def compare_rosters(
     """
     changes = []
 
-    # Build lookup of historical players by name
+    # Build lookup of historical players by normalized name (removes accents)
     historical_by_name = {}
     for _, row in historical_players.iterrows():
         name = row.get("Name", "").strip()
         if name:
-            historical_by_name[name.lower()] = {
+            name_key = normalize_name(name)
+            historical_by_name[name_key] = {
                 "team": row.get("Team", ""),
                 "playerid": row.get("playerid", row.get("IDfg", 0)),
+                "original_name": name,
             }
 
     # Check each player in current rosters
@@ -278,10 +296,10 @@ def compare_rosters(
         current_team_normalized = normalize_team_abbrev(team)
 
         for player in players:
-            name_lower = player.name.lower()
+            name_key = normalize_name(player.name)
 
-            if name_lower in historical_by_name:
-                hist = historical_by_name[name_lower]
+            if name_key in historical_by_name:
+                hist = historical_by_name[name_key]
                 old_team = hist["team"]
                 old_team_normalized = normalize_team_abbrev(old_team)
 
@@ -312,10 +330,10 @@ def compare_rosters(
     current_names = set()
     for players in current_rosters.values():
         for p in players:
-            current_names.add(p.name.lower())
+            current_names.add(normalize_name(p.name))
 
-    for name_lower, hist in historical_by_name.items():
-        if name_lower not in current_names and hist["team"]:
+    for name_key, hist in historical_by_name.items():
+        if name_key not in current_names and hist["team"]:
             # Player no longer on any 40-man roster
             # Could be release, retirement, or minor leagues
             # Skip for now - too many false positives
