@@ -386,14 +386,29 @@ def project_playing_time(
             for i, (_, row) in enumerate(stats.iterrows())
             if i < len(weights)
         ) / total_weight
+
+        # Also get max PA from recent years (for injury-adjusted projection)
+        max_recent_pa = max(row.get("PA", 0) for _, row in stats.iterrows())
         baseline_val = baseline.pa
+
+        # For established regulars, don't let one injury year drag down projection
+        # Use higher of: weighted avg, or 70% of their max recent healthy year
+        if role in ("Everyday", "Everyday_Plus", "Regular"):
+            historical_avg = max(historical_avg, max_recent_pa * 0.7)
     else:
         historical_avg = sum(
             row.get("IP", 0) * weights[i]
             for i, (_, row) in enumerate(stats.iterrows())
             if i < len(weights)
         ) / total_weight
+
+        # Also get max IP from recent years
+        max_recent_ip = max(row.get("IP", 0) for _, row in stats.iterrows())
         baseline_val = baseline.ip
+
+        # For established starters, don't let one injury year drag down projection
+        if role in ("SP1", "SP2", "SP3", "SP4"):
+            historical_avg = max(historical_avg, max_recent_ip * 0.7)
 
     # Blend historical average with role baseline (60/40 split)
     blended = 0.6 * historical_avg + 0.4 * baseline_val

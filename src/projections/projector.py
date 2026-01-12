@@ -105,10 +105,19 @@ class Projector:
         pitching_stats = self._normalize_team_names(pitching_stats)
 
         # Apply roster changes to update player teams
+        # Build team change mapping for park factor adjustments
+        team_changes = {}  # {player_name_lower: (from_team, to_team)}
         if roster_changes:
             logger.info(f"Applying {len(roster_changes)} roster changes...")
             batting_stats = self._apply_roster_changes_to_stats(batting_stats, roster_changes, end_year)
             pitching_stats = self._apply_roster_changes_to_stats(pitching_stats, roster_changes, end_year)
+
+            # Build mapping for park factor adjustments
+            from ..data.mlb_api import normalize_name
+            for change in roster_changes:
+                if change.from_team and change.to_team and change.from_team != change.to_team:
+                    name_key = normalize_name(change.player_name)
+                    team_changes[name_key] = (change.from_team, change.to_team)
 
         # Get most recent year's rosters as baseline
         most_recent_batting = batting_stats[batting_stats["Season"] == end_year]
@@ -126,7 +135,7 @@ class Projector:
                 team,
                 batting_stats,
                 pitching_stats,
-                roster_changes,
+                team_changes,
             )
             projections[team] = team_proj
 
@@ -137,7 +146,7 @@ class Projector:
         team: str,
         all_batting: pd.DataFrame,
         all_pitching: pd.DataFrame,
-        roster_changes: Optional[List[RosterChange]] = None,
+        team_changes: Optional[dict] = None,
     ) -> TeamProjectionSet:
         """Generate projections for a single team.
 
@@ -145,11 +154,12 @@ class Projector:
             team: Team abbreviation.
             all_batting: All batting stats for the historical period.
             all_pitching: All pitching stats for the historical period.
-            roster_changes: Optional roster changes to apply.
+            team_changes: Dict mapping normalized player names to (from_team, to_team).
 
         Returns:
             TeamProjectionSet with all projections.
         """
+        team_changes = team_changes or {}
         end_year = self.config.projection_year - 1
 
         # Get current roster (most recent year)
@@ -164,6 +174,8 @@ class Projector:
         batter_projections = []
         batter_pt_projections = []
 
+        from ..data.mlb_api import normalize_name
+
         for _, row in team_batters.iterrows():
             player_id = row.get("IDfg", row.get("playerid", 0))
             if player_id == 0:
@@ -174,6 +186,14 @@ class Projector:
             if len(player_history) == 0:
                 player_history = all_batting[all_batting["playerid"] == player_id]
 
+            # Check if player changed teams (for park factor adjustment)
+            player_name = row.get("Name", "")
+            name_key = normalize_name(player_name)
+            new_team_for_park = None
+            if name_key in team_changes:
+                # Player changed teams - pass new_team for park factor adjustment
+                new_team_for_park = team
+
             try:
                 # Generate projection
                 proj = project_batter(
@@ -181,6 +201,7 @@ class Projector:
                     historical_stats=player_history,
                     projection_year=self.config.projection_year,
                     year_weights=self.config.year_weights,
+                    new_team=new_team_for_park,
                 )
 
                 # Project playing time
@@ -217,12 +238,20 @@ class Projector:
             if len(player_history) == 0:
                 player_history = all_pitching[all_pitching["playerid"] == player_id]
 
+            # Check if player changed teams (for park factor adjustment)
+            player_name = row.get("Name", "")
+            name_key = normalize_name(player_name)
+            new_team_for_park = None
+            if name_key in team_changes:
+                new_team_for_park = team
+
             try:
                 proj = project_pitcher(
                     player_id=int(player_id),
                     historical_stats=player_history,
                     projection_year=self.config.projection_year,
                     year_weights=self.config.year_weights,
+                    new_team=new_team_for_park,
                 )
 
                 pt_proj = project_playing_time(
