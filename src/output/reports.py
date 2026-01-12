@@ -213,12 +213,20 @@ def generate_team_report(
     # Add roster breakdown if available
     if team_projection:
         lines.append(f"\nROSTER STRENGTH:")
-        lines.append(f"  Lineup wRC+:    {team_projection.lineup_wrc_plus:>6.1f}")
-        lines.append(f"  Rotation FIP:   {team_projection.rotation_fip:>6.2f}")
-        lines.append(f"  Bullpen FIP:    {team_projection.bullpen_fip:>6.2f}")
         lines.append(f"  Proj RS:        {team_projection.projected_runs_scored:>6.0f}")
         lines.append(f"  Proj RA:        {team_projection.projected_runs_allowed:>6.0f}")
         lines.append(f"  Run Diff:       {team_projection.projected_runs_scored - team_projection.projected_runs_allowed:>+6.0f}")
+
+        # Strength of Schedule
+        if hasattr(team_projection, 'sos') and team_projection.sos != 0.500:
+            lines.append(f"\nSTRENGTH OF SCHEDULE:")
+            lines.append(f"  SOS:            {team_projection.sos:>6.3f}")
+            sos_desc = "harder" if team_projection.sos > 0.500 else "easier"
+            lines.append(f"  Schedule:       {sos_desc} than average")
+            lines.append(f"  Win Adjustment: {team_projection.sos_win_adjustment:>+5.1f}")
+            if team_projection.projected_wins_pre_sos > 0:
+                lines.append(f"  Pre-SOS Wins:   {team_projection.projected_wins_pre_sos:>6.1f}")
+                lines.append(f"  Post-SOS Wins:  {team_projection.projected_wins:>6.1f}")
 
         # Top batters
         if team_projection.batters:
@@ -258,16 +266,18 @@ def generate_team_report(
 def export_to_csv(
     simulation: SeasonSimulation,
     output_path: Union[Path, str],
+    team_projections: Optional[Dict[str, "TeamProjectionSet"]] = None,
 ) -> None:
     """Export simulation results to CSV.
 
     Args:
         simulation: Completed season simulation.
         output_path: Path for output CSV.
+        team_projections: Optional team projections with SOS data.
     """
     rows = []
     for team, result in simulation.team_results.items():
-        rows.append({
+        row = {
             "Team": team,
             "Full Name": TEAM_FULL_NAMES.get(team, team),
             "Division": TEAM_TO_DIVISION.get(team, ""),
@@ -284,7 +294,16 @@ def export_to_csv(
             "100+ Wins %": round(result.wins_100_plus_pct, 1),
             "Over .500 %": round(result.wins_over_500_pct, 1),
             "Last Place %": round(result.last_place_pct, 1),
-        })
+        }
+
+        # Add SOS data if available
+        if team_projections and team in team_projections:
+            proj = team_projections[team]
+            if hasattr(proj, 'sos'):
+                row["SOS"] = round(proj.sos, 3)
+                row["SOS Win Adj"] = round(proj.sos_win_adjustment, 1)
+
+        rows.append(row)
 
     df = pd.DataFrame(rows)
     df = df.sort_values("Projected Wins", ascending=False).reset_index(drop=True)
@@ -362,3 +381,90 @@ def export_player_projections_csv(
     logger.info(f"Exported {len(pitcher_rows)} pitchers to {pitchers_path}")
 
     return batters_path, pitchers_path
+
+
+def generate_sos_report(
+    team_projections: Dict[str, "TeamProjectionSet"],
+) -> str:
+    """Generate a Strength of Schedule report.
+
+    Args:
+        team_projections: Dict of team projections with SOS data.
+
+    Returns:
+        Formatted SOS report string.
+    """
+    lines = []
+    lines.append("=" * 60)
+    lines.append("  STRENGTH OF SCHEDULE REPORT".center(60))
+    lines.append("=" * 60)
+    lines.append("")
+    lines.append("SOS > 0.500 = harder schedule (face better teams)")
+    lines.append("SOS < 0.500 = easier schedule (face weaker teams)")
+    lines.append("")
+
+    # Sort teams by SOS (hardest to easiest)
+    teams_with_sos = [
+        (team, proj)
+        for team, proj in team_projections.items()
+        if hasattr(proj, 'sos') and proj.sos != 0.500
+    ]
+
+    if not teams_with_sos:
+        return "No SOS data available"
+
+    teams_with_sos.sort(key=lambda x: x[1].sos, reverse=True)
+
+    lines.append(f"{'Rank':<5} {'Team':<5} {'SOS':>7} {'Adj':>6} {'Pre-SOS W':>10} {'Post-SOS W':>11}")
+    lines.append("-" * 60)
+
+    for i, (team, proj) in enumerate(teams_with_sos, 1):
+        pre_sos = proj.projected_wins_pre_sos if proj.projected_wins_pre_sos > 0 else proj.projected_wins
+        post_sos = proj.projected_wins
+        lines.append(
+            f"{i:<5} {team:<5} {proj.sos:>7.3f} {proj.sos_win_adjustment:>+5.1f} "
+            f"{pre_sos:>10.1f} {post_sos:>11.1f}"
+        )
+
+    lines.append("")
+    lines.append("-" * 60)
+
+    # Division breakdown
+    lines.append("\nSCHEDULE DIFFICULTY BY DIVISION:")
+    lines.append("-" * 40)
+
+    for div in sorted(DIVISIONS.keys()):
+        div_teams = [
+            (team, proj)
+            for team, proj in team_projections.items()
+            if TEAM_TO_DIVISION.get(team) == div and hasattr(proj, 'sos')
+        ]
+        if div_teams:
+            avg_sos = sum(p.sos for _, p in div_teams) / len(div_teams)
+            hardest_team = max(div_teams, key=lambda x: x[1].sos)
+            easiest_team = min(div_teams, key=lambda x: x[1].sos)
+            lines.append(f"\n{div}:")
+            lines.append(f"  Avg SOS: {avg_sos:.3f}")
+            lines.append(f"  Hardest: {hardest_team[0]} ({hardest_team[1].sos:.3f})")
+            lines.append(f"  Easiest: {easiest_team[0]} ({easiest_team[1].sos:.3f})")
+
+    lines.append("")
+
+    # Key insights
+    lines.append("\nKEY INSIGHTS:")
+    lines.append("-" * 40)
+
+    # Teams with biggest adjustments
+    biggest_neg = min(teams_with_sos, key=lambda x: x[1].sos_win_adjustment)
+    biggest_pos = max(teams_with_sos, key=lambda x: x[1].sos_win_adjustment)
+
+    lines.append(
+        f"Toughest schedule: {biggest_neg[0]} "
+        f"(SOS: {biggest_neg[1].sos:.3f}, {biggest_neg[1].sos_win_adjustment:+.1f} wins)"
+    )
+    lines.append(
+        f"Easiest schedule:  {biggest_pos[0]} "
+        f"(SOS: {biggest_pos[1].sos:.3f}, {biggest_pos[1].sos_win_adjustment:+.1f} wins)"
+    )
+
+    return "\n".join(lines)

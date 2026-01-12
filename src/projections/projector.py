@@ -30,6 +30,7 @@ from .playing_time import (
     allocate_team_playing_time,
 )
 from .team import TEAM_TO_DIVISION
+from .schedule import apply_sos_adjustments, calculate_all_sos
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,11 @@ class TeamProjectionSet:
     projected_runs_scored: float = 0.0
     projected_runs_allowed: float = 0.0
     projected_wins: float = 0.0
+
+    # Strength of Schedule adjustments
+    sos: float = 0.500  # Overall SOS (0.500 = neutral)
+    sos_win_adjustment: float = 0.0  # Adjustment applied to wins
+    projected_wins_pre_sos: float = 0.0  # Wins before SOS adjustment
 
 
 class Projector:
@@ -138,6 +144,11 @@ class Projector:
                 team_changes,
             )
             projections[team] = team_proj
+
+        # Apply Strength of Schedule adjustments
+        logger.info("Calculating Strength of Schedule adjustments...")
+        sos_results = calculate_all_sos(projections)
+        projections = apply_sos_adjustments(projections, sos_results)
 
         return projections
 
