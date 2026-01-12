@@ -7,6 +7,8 @@ import logging
 import sys
 from pathlib import Path
 
+from typing import Dict, Optional
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -122,7 +124,7 @@ def run_projections(
     iterations: int,
     player_variance: bool,
     auto_sync: bool,
-    random_seed: int | None,
+    random_seed: Optional[int],
 ):
     """Run the projection and simulation pipeline."""
     progress_bar = st.progress(0, text="Initializing...")
@@ -213,7 +215,7 @@ def show_demo_placeholder():
 def show_results():
     """Display projection and simulation results."""
     simulation: SeasonSimulation = st.session_state.simulation
-    projections: dict[str, TeamProjectionSet] = st.session_state.projections
+    projections: Dict[str, TeamProjectionSet] = st.session_state.projections
 
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs([
@@ -236,7 +238,7 @@ def show_results():
         show_analytics_tab(simulation, projections)
 
 
-def show_standings_tab(simulation: SeasonSimulation, projections: dict):
+def show_standings_tab(simulation: SeasonSimulation, projections: Dict[str, TeamProjectionSet]):
     """Display standings and playoff odds."""
     st.header("Projected Standings & Playoff Odds")
 
@@ -293,7 +295,7 @@ def show_standings_tab(simulation: SeasonSimulation, projections: dict):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def show_team_details_tab(simulation: SeasonSimulation, projections: dict):
+def show_team_details_tab(simulation: SeasonSimulation, projections: Dict[str, TeamProjectionSet]):
     """Display detailed view for a selected team."""
     st.header("Team Details")
 
@@ -518,7 +520,7 @@ def show_player_projections_tab():
             st.dataframe(sv_leaders, hide_index=True)
 
 
-def show_analytics_tab(simulation: SeasonSimulation, projections: dict):
+def show_analytics_tab(simulation: SeasonSimulation, projections: Dict[str, TeamProjectionSet]):
     """Display advanced analytics and visualizations."""
     st.header("Analytics")
 
