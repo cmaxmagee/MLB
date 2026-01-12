@@ -121,6 +121,209 @@ def apply_age_adjustment(
 
 
 # ============================================================================
+# Prospect Detection
+# ============================================================================
+
+def is_prospect_batter(historical_stats: pd.DataFrame, age: int) -> bool:
+    """Detect if a batter is a high-upside prospect who should get boosted playing time.
+
+    Criteria:
+    - Age 25 or younger
+    - Less than ~1.5 full seasons of MLB PA (< 900 PA total)
+    - Performed well in limited time (wRC+ > 95 or OPS > .720)
+
+    Args:
+        historical_stats: DataFrame with player's batting stats by year.
+        age: Player's age for projection year.
+
+    Returns:
+        True if player should get prospect playing time boost.
+    """
+    if age > 25:
+        return False
+
+    if len(historical_stats) == 0:
+        return False
+
+    # Calculate total MLB PA
+    total_pa = historical_stats["PA"].sum() if "PA" in historical_stats.columns else 0
+    if total_pa >= 900:  # Already have 1.5+ seasons, not a prospect situation
+        return False
+
+    if total_pa < 50:  # Too little data to evaluate
+        return False
+
+    # Check performance - need to have shown they can hit
+    # Weight recent years for performance check
+    stats = historical_stats.sort_values("Season", ascending=False)
+
+    # Calculate weighted performance
+    weights = [3, 2, 1][:len(stats)]
+    total_weight = sum(weights)
+
+    # Check wRC+ if available
+    if "wRC+" in stats.columns:
+        weighted_wrc = sum(
+            row.get("wRC+", 100) * weights[i]
+            for i, (_, row) in enumerate(stats.iterrows())
+            if i < len(weights)
+        ) / total_weight
+        if weighted_wrc >= 95:
+            return True
+
+    # Fallback to OPS
+    if "OPS" in stats.columns:
+        weighted_ops = sum(
+            row.get("OPS", 0) * weights[i]
+            for i, (_, row) in enumerate(stats.iterrows())
+            if i < len(weights)
+        ) / total_weight
+        if weighted_ops >= 0.720:
+            return True
+
+    # Check OBP + SLG separately
+    if "OBP" in stats.columns and "SLG" in stats.columns:
+        weighted_obp = sum(
+            row.get("OBP", 0) * weights[i]
+            for i, (_, row) in enumerate(stats.iterrows())
+            if i < len(weights)
+        ) / total_weight
+        weighted_slg = sum(
+            row.get("SLG", 0) * weights[i]
+            for i, (_, row) in enumerate(stats.iterrows())
+            if i < len(weights)
+        ) / total_weight
+        if weighted_obp + weighted_slg >= 0.720:
+            return True
+
+    return False
+
+
+def is_prospect_pitcher(historical_stats: pd.DataFrame, age: int) -> bool:
+    """Detect if a pitcher is a high-upside prospect who should get boosted playing time.
+
+    Criteria:
+    - Age 26 or younger (pitchers develop slightly later)
+    - Less than ~1.5 full seasons of MLB IP (< 280 IP total)
+    - Performed well in limited time (ERA < 4.20 or FIP < 4.00)
+
+    Args:
+        historical_stats: DataFrame with player's pitching stats by year.
+        age: Player's age for projection year.
+
+    Returns:
+        True if player should get prospect playing time boost.
+    """
+    if age > 26:
+        return False
+
+    if len(historical_stats) == 0:
+        return False
+
+    # Calculate total MLB IP
+    total_ip = historical_stats["IP"].sum() if "IP" in historical_stats.columns else 0
+    if total_ip >= 280:  # Already have 1.5+ seasons
+        return False
+
+    if total_ip < 20:  # Too little data
+        return False
+
+    # Check performance
+    stats = historical_stats.sort_values("Season", ascending=False)
+    weights = [3, 2, 1][:len(stats)]
+    total_weight = sum(weights)
+
+    # Check ERA
+    if "ERA" in stats.columns:
+        weighted_era = sum(
+            row.get("ERA", 5.0) * weights[i]
+            for i, (_, row) in enumerate(stats.iterrows())
+            if i < len(weights)
+        ) / total_weight
+        if weighted_era <= 4.20:
+            return True
+
+    # Check FIP (more predictive)
+    if "FIP" in stats.columns:
+        weighted_fip = sum(
+            row.get("FIP", 5.0) * weights[i]
+            for i, (_, row) in enumerate(stats.iterrows())
+            if i < len(weights)
+        ) / total_weight
+        if weighted_fip <= 4.00:
+            return True
+
+    # Check K/9 for high-upside arms
+    if "K/9" in stats.columns:
+        weighted_k9 = sum(
+            row.get("K/9", 0) * weights[i]
+            for i, (_, row) in enumerate(stats.iterrows())
+            if i < len(weights)
+        ) / total_weight
+        if weighted_k9 >= 9.0:
+            return True
+
+    return False
+
+
+def get_prospect_role_boost(
+    current_role: str,
+    player_type: Literal["batter", "pitcher"],
+    historical_stats: pd.DataFrame,
+) -> str:
+    """Boost a prospect's role based on their trajectory.
+
+    Args:
+        current_role: Currently detected role.
+        player_type: "batter" or "pitcher".
+        historical_stats: Player's historical stats.
+
+    Returns:
+        Boosted role string.
+    """
+    if player_type == "batter":
+        # Batter role upgrade path
+        role_upgrades = {
+            "Part_Time": "Bench",
+            "Bench": "Platoon",
+            "Platoon": "Regular",
+            "Utility": "Regular",
+            "Regular": "Everyday",
+            "Everyday": "Everyday_Plus",
+            "Everyday_Plus": "Everyday_Plus",  # Already max
+        }
+        return role_upgrades.get(current_role, current_role)
+    else:
+        # Pitcher role upgrade - need to check if starter or reliever
+        stats = historical_stats.sort_values("Season", ascending=False).head(3)
+        total_gs = stats["GS"].sum() if "GS" in stats.columns else 0
+        total_g = stats["G"].sum() if "G" in stats.columns else 1
+
+        is_starter = total_gs / max(total_g, 1) > 0.5
+
+        if is_starter:
+            starter_upgrades = {
+                "Swing": "SP5",
+                "SP5": "SP4",
+                "SP4": "SP3",
+                "SP3": "SP2",
+                "SP2": "SP1",
+                "SP1": "SP1",  # Already max
+            }
+            return starter_upgrades.get(current_role, "SP3")
+        else:
+            reliever_upgrades = {
+                "LOOGY": "RP_Low",
+                "RP_Low": "RP_Mid",
+                "RP_Mid": "RP_High",
+                "RP_High": "SU",
+                "SU": "CL",
+                "CL": "CL",  # Already max
+            }
+            return reliever_upgrades.get(current_role, current_role)
+
+
+# ============================================================================
 # Role Detection
 # ============================================================================
 
@@ -367,12 +570,27 @@ def project_playing_time(
     name = most_recent.get("Name", f"Player {player_id}")
     team = most_recent.get("Team", "")
 
-    # Detect role
+    # Detect role and check for prospect boost
+    is_prospect = False
     if player_type == "batter":
         role = role_override or detect_batter_role(historical_stats)
+        # Check for prospect boost
+        if not role_override and is_prospect_batter(historical_stats, age):
+            is_prospect = True
+            original_role = role
+            role = get_prospect_role_boost(role, "batter", historical_stats)
+            if role != original_role:
+                logger.debug(f"Prospect boost: {name} {original_role} -> {role}")
         baseline = BATTER_ROLES.get(role, BATTER_ROLES["Bench"])
     else:
         role = role_override or detect_pitcher_role(historical_stats)
+        # Check for prospect boost
+        if not role_override and is_prospect_pitcher(historical_stats, age):
+            is_prospect = True
+            original_role = role
+            role = get_prospect_role_boost(role, "pitcher", historical_stats)
+            if role != original_role:
+                logger.debug(f"Prospect boost: {name} {original_role} -> {role}")
         baseline = PITCHER_ROLES.get(role, PITCHER_ROLES["RP_Low"])
 
     # Calculate historical average (weighted toward recent)
@@ -410,8 +628,14 @@ def project_playing_time(
         if role in ("SP1", "SP2", "SP3", "SP4"):
             historical_avg = max(historical_avg, max_recent_ip * 0.7)
 
-    # Blend historical average with role baseline (60/40 split)
-    blended = 0.6 * historical_avg + 0.4 * baseline_val
+    # Blend historical average with role baseline
+    # For prospects, weight baseline more heavily since limited history doesn't reflect future role
+    if is_prospect:
+        # Prospects: 25% history, 75% role baseline (trust the trajectory)
+        blended = 0.25 * historical_avg + 0.75 * baseline_val
+    else:
+        # Established players: 60% history, 40% baseline
+        blended = 0.6 * historical_avg + 0.4 * baseline_val
 
     # Apply age/health adjustment
     health_mult = get_health_multiplier(age, player_type)
