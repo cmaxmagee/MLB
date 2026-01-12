@@ -32,6 +32,39 @@ MLB_TEAM_IDS = {
 # Reverse mapping
 ABBREV_TO_MLB_ID = {v: k for k, v in MLB_TEAM_IDS.items()}
 
+# FanGraphs uses different abbreviations for some teams
+# Map FanGraphs abbreviations to standard MLB abbreviations
+FANGRAPHS_TO_MLB_ABBREV = {
+    "ATH": "OAK",   # Athletics
+    "FLA": "MIA",   # Florida Marlins -> Miami Marlins
+    "ANA": "LAA",   # Anaheim Angels -> LA Angels
+    "TBD": "TBR",   # Tampa Bay Devil Rays -> Rays
+    "MON": "WSN",   # Montreal Expos -> Washington Nationals
+    "CAL": "LAA",   # California Angels
+    "KCA": "KCR",   # Kansas City
+    "SDN": "SDP",   # San Diego
+    "SFN": "SFG",   # San Francisco
+    "NYA": "NYY",   # NY American League
+    "NYN": "NYM",   # NY National League
+    "CHA": "CHW",   # Chicago American League
+    "CHN": "CHC",   # Chicago National League
+    "LAN": "LAD",   # LA National League
+    "SLN": "STL",   # St. Louis National League
+    "WAS": "WSN",   # Washington
+}
+
+
+def normalize_team_abbrev(team: str) -> str:
+    """Normalize team abbreviation to standard MLB format.
+
+    FanGraphs and other sources use different abbreviations.
+    This ensures consistent team matching.
+    """
+    if not team:
+        return team
+    team_upper = team.upper().strip()
+    return FANGRAPHS_TO_MLB_ABBREV.get(team_upper, team_upper)
+
 
 @dataclass
 class MLBPlayer:
@@ -242,23 +275,26 @@ def compare_rosters(
 
     # Check each player in current rosters
     for team, players in current_rosters.items():
+        current_team_normalized = normalize_team_abbrev(team)
+
         for player in players:
             name_lower = player.name.lower()
 
             if name_lower in historical_by_name:
                 hist = historical_by_name[name_lower]
                 old_team = hist["team"]
+                old_team_normalized = normalize_team_abbrev(old_team)
 
-                # Player changed teams
-                if old_team and old_team != team:
+                # Player changed teams (compare normalized abbreviations)
+                if old_team and old_team_normalized != current_team_normalized:
                     changes.append({
                         "player_name": player.name,
                         "player_id": hist["playerid"],
                         "change_type": "trade",
-                        "from_team": old_team,
-                        "to_team": team,
+                        "from_team": old_team_normalized,
+                        "to_team": current_team_normalized,
                         "effective_date": "",
-                        "notes": f"Moved from {old_team} to {team}",
+                        "notes": f"Moved from {old_team_normalized} to {current_team_normalized}",
                     })
             else:
                 # New player not in historical data (free agent signing or callup)
@@ -267,7 +303,7 @@ def compare_rosters(
                     "player_id": "",
                     "change_type": "signing",
                     "from_team": "",
-                    "to_team": team,
+                    "to_team": current_team_normalized,
                     "effective_date": "",
                     "notes": "New to team (no historical data)",
                 })
