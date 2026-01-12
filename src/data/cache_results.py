@@ -243,3 +243,71 @@ def get_available_cache_files(
             })
 
     return sorted(files, key=lambda x: (x["year"], x["is_latest"]), reverse=True)
+
+
+def compare_simulations(
+    current: Dict[str, Any],
+    previous: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Compare two simulation results and compute deltas.
+
+    Args:
+        current: Current simulation results (from load_simulation_results metadata dict style).
+        previous: Previous simulation results to compare against.
+
+    Returns:
+        Dictionary with comparison data including deltas for each team.
+    """
+    comparison = {
+        "current_timestamp": current.get("timestamp", "Unknown"),
+        "previous_timestamp": previous.get("timestamp", "Unknown"),
+        "team_changes": [],
+    }
+
+    current_results = current.get("team_results", {})
+    previous_results = previous.get("team_results", {})
+
+    for team in current_results:
+        curr = current_results[team]
+        prev = previous_results.get(team, {})
+
+        if not prev:
+            continue
+
+        delta_wins = curr.get("mean_wins", 0) - prev.get("mean_wins", 0)
+        delta_playoff = curr.get("playoff_pct", 0) - prev.get("playoff_pct", 0)
+        delta_division = curr.get("division_winner_pct", 0) - prev.get("division_winner_pct", 0)
+
+        comparison["team_changes"].append({
+            "team": team,
+            "current_wins": curr.get("mean_wins", 0),
+            "previous_wins": prev.get("mean_wins", 0),
+            "delta_wins": delta_wins,
+            "current_playoff": curr.get("playoff_pct", 0),
+            "previous_playoff": prev.get("playoff_pct", 0),
+            "delta_playoff": delta_playoff,
+            "current_division": curr.get("division_winner_pct", 0),
+            "previous_division": prev.get("division_winner_pct", 0),
+            "delta_division": delta_division,
+        })
+
+    # Sort by absolute delta in wins (biggest movers first)
+    comparison["team_changes"].sort(key=lambda x: abs(x["delta_wins"]), reverse=True)
+
+    return comparison
+
+
+def load_raw_cache_file(filepath: Path) -> Optional[Dict[str, Any]]:
+    """Load a cache file and return the raw JSON data.
+
+    Args:
+        filepath: Path to the cache file.
+
+    Returns:
+        Raw dictionary from JSON file, or None if not found.
+    """
+    if not filepath.exists():
+        return None
+
+    with open(filepath, "r") as f:
+        return json.load(f)

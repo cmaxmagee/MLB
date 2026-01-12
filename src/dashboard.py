@@ -35,7 +35,12 @@ from src.simulation.monte_carlo import (
     run_simulation_with_player_variance,
     SeasonSimulation,
 )
-from src.data.cache_results import load_simulation_results, get_available_cache_files
+from src.data.cache_results import (
+    load_simulation_results,
+    get_available_cache_files,
+    compare_simulations,
+    load_raw_cache_file,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -306,11 +311,12 @@ def show_results():
     projections: Dict[str, TeamProjectionSet] = st.session_state.projections
 
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📈 Standings & Playoff Odds",
         "🏟️ Team Details",
         "👥 Player Projections",
         "📊 Analytics",
+        "🔄 Compare Runs",
     ])
 
     with tab1:
@@ -324,6 +330,9 @@ def show_results():
 
     with tab4:
         show_analytics_tab(simulation, projections)
+
+    with tab5:
+        show_comparison_tab()
 
 
 def show_standings_tab(simulation: SeasonSimulation, projections: Dict[str, TeamProjectionSet]):
@@ -698,6 +707,161 @@ def show_analytics_tab(simulation: SeasonSimulation, projections: Dict[str, Team
     )
     fig.update_layout(yaxis_title="Average Team Wins", showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
+
+
+def show_comparison_tab():
+    """Display comparison between simulation runs."""
+    st.header("Compare Simulation Runs")
+
+    # Get available cache files (non-latest only, for comparison)
+    cache_files = get_available_cache_files()
+    historical_files = [f for f in cache_files if not f["is_latest"] and f["timestamp"]]
+
+    if not historical_files:
+        st.info("No historical simulation runs found to compare against.")
+        st.markdown("""
+        To enable comparison:
+        1. Run `python -m src.main generate-cache --year 2026` multiple times
+        2. Each run creates a timestamped file that can be compared
+
+        The comparison will show how projections have changed between runs.
+        """)
+        return
+
+    if not st.session_state.from_cache or not st.session_state.metadata:
+        st.warning("Comparison requires cached projections to be loaded.")
+        return
+
+    current_year = st.session_state.metadata.get("year", 2026)
+
+    # Filter to same year
+    same_year_files = [f for f in historical_files if f["year"] == current_year]
+
+    if not same_year_files:
+        st.info(f"No historical runs found for {current_year} to compare against.")
+        return
+
+    # Let user select a historical run to compare
+    st.subheader("Select Previous Run")
+
+    options = {f["timestamp"]: f for f in same_year_files}
+    selected_timestamp = st.selectbox(
+        "Compare current projections to:",
+        options=list(options.keys()),
+        format_func=lambda x: f"{x[:8]} {x[9:11]}:{x[11:13]}:{x[13:15]}" if len(x) >= 15 else x,
+    )
+
+    if selected_timestamp:
+        previous_file = options[selected_timestamp]
+        previous_data = load_raw_cache_file(previous_file["path"])
+
+        if previous_data is None:
+            st.error("Could not load previous simulation data.")
+            return
+
+        # Load current data for comparison
+        from pathlib import Path
+        current_path = Path(__file__).parent.parent / "data" / "cache" / f"simulation_{current_year}_latest.json"
+        current_data = load_raw_cache_file(current_path)
+
+        if current_data is None:
+            st.error("Could not load current simulation data.")
+            return
+
+        # Compare
+        comparison = compare_simulations(current_data, previous_data)
+
+        # Display comparison
+        st.subheader("Changes Since Previous Run")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.caption(f"**Current:** {current_data['metadata']['timestamp'][:10]}")
+        with col2:
+            st.caption(f"**Previous:** {previous_data['metadata']['timestamp'][:10]}")
+
+        # Create comparison DataFrame
+        comp_df = pd.DataFrame(comparison["team_changes"])
+
+        if len(comp_df) == 0:
+            st.info("No changes detected between runs.")
+            return
+
+        # Format for display
+        comp_df["Wins Change"] = comp_df["delta_wins"].apply(
+            lambda x: f"+{x:.1f}" if x > 0 else f"{x:.1f}"
+        )
+        comp_df["Playoff Change"] = comp_df["delta_playoff"].apply(
+            lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%"
+        )
+
+        # Biggest movers
+        st.subheader("Biggest Movers (by Wins)")
+
+        # Rising teams
+        rising = comp_df[comp_df["delta_wins"] > 0.5].head(5)
+        falling = comp_df[comp_df["delta_wins"] < -0.5].head(5)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**📈 Rising**")
+            if len(rising) > 0:
+                for _, row in rising.iterrows():
+                    st.markdown(
+                        f"**{row['team']}**: {row['current_wins']:.1f} wins "
+                        f"({row['Wins Change']})"
+                    )
+            else:
+                st.caption("No significant increases")
+
+        with col2:
+            st.markdown("**📉 Falling**")
+            if len(falling) > 0:
+                for _, row in falling.iterrows():
+                    st.markdown(
+                        f"**{row['team']}**: {row['current_wins']:.1f} wins "
+                        f"({row['Wins Change']})"
+                    )
+            else:
+                st.caption("No significant decreases")
+
+        # Full comparison table
+        st.subheader("Full Comparison")
+
+        display_df = comp_df[[
+            "team", "current_wins", "previous_wins", "Wins Change",
+            "current_playoff", "previous_playoff", "Playoff Change"
+        ]].copy()
+        display_df.columns = [
+            "Team", "Current Wins", "Prev Wins", "Δ Wins",
+            "Current Playoff %", "Prev Playoff %", "Δ Playoff"
+        ]
+        display_df["Current Wins"] = display_df["Current Wins"].round(1)
+        display_df["Prev Wins"] = display_df["Prev Wins"].round(1)
+        display_df["Current Playoff %"] = display_df["Current Playoff %"].round(1)
+        display_df["Prev Playoff %"] = display_df["Prev Playoff %"].round(1)
+
+        st.dataframe(display_df, hide_index=True, use_container_width=True)
+
+        # Visualization
+        st.subheader("Win Changes Visualization")
+
+        fig = px.bar(
+            comp_df.head(15),
+            x="team",
+            y="delta_wins",
+            color="delta_wins",
+            color_continuous_scale="RdYlGn",
+            color_continuous_midpoint=0,
+            title="Projected Win Changes by Team",
+        )
+        fig.update_layout(
+            xaxis_title="Team",
+            yaxis_title="Change in Projected Wins",
+            showlegend=False,
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
 
 if __name__ == "__main__":
