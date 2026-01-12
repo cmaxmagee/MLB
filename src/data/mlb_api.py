@@ -423,3 +423,106 @@ def get_player_info(player_name: str) -> Optional[Dict]:
         logger.error(f"Error looking up player {player_name}: {e}")
 
     return None
+
+
+def detect_roster_changes(
+    historical_batting: pd.DataFrame,
+    historical_pitching: pd.DataFrame,
+) -> List["RosterChange"]:
+    """Detect roster changes by comparing MLB API rosters to historical data.
+
+    Fetches current 40-man rosters from the MLB API and compares them to
+    the most recent historical data to detect trades and signings.
+
+    Args:
+        historical_batting: Historical batting stats DataFrame.
+        historical_pitching: Historical pitching stats DataFrame.
+
+    Returns:
+        List of RosterChange objects representing detected moves.
+    """
+    from .roster_changes import RosterChange, ChangeType
+
+    if not check_api_available():
+        logger.warning("MLB API not available - skipping roster sync")
+        return []
+
+    logger.info("Fetching current 40-man rosters from MLB API...")
+    current_rosters = fetch_all_rosters()
+
+    if not current_rosters:
+        logger.warning("Failed to fetch rosters from MLB API")
+        return []
+
+    # Get most recent team for each player from historical data
+    # Use IDfg as the player ID column (pybaseball standard)
+    id_col = "IDfg" if "IDfg" in historical_batting.columns else "playerid"
+
+    # Handle empty DataFrames
+    if len(historical_batting) > 0 and "Season" in historical_batting.columns:
+        most_recent_batting = historical_batting.sort_values("Season", ascending=False)
+    else:
+        most_recent_batting = historical_batting
+
+    if len(historical_pitching) > 0 and "Season" in historical_pitching.columns:
+        most_recent_pitching = historical_pitching.sort_values("Season", ascending=False)
+    else:
+        most_recent_pitching = historical_pitching
+
+    # Build lookup by normalized name -> (team, player_id)
+    player_teams = {}
+
+    if len(most_recent_batting) > 0 and "Name" in most_recent_batting.columns:
+        for _, row in most_recent_batting.groupby("Name").first().reset_index().iterrows():
+            name = row.get("Name", "")
+            if name:
+                name_key = normalize_name(name)
+                team = normalize_team_abbrev(str(row.get("Team", "")))
+                player_teams[name_key] = {
+                    "team": team,
+                    "player_id": row.get(id_col, 0),
+                    "original_name": name,
+                }
+
+    if len(most_recent_pitching) > 0 and "Name" in most_recent_pitching.columns:
+        for _, row in most_recent_pitching.groupby("Name").first().reset_index().iterrows():
+            name = row.get("Name", "")
+            if name:
+                name_key = normalize_name(name)
+                if name_key not in player_teams:  # Don't overwrite batters
+                    team = normalize_team_abbrev(str(row.get("Team", "")))
+                    player_teams[name_key] = {
+                        "team": team,
+                        "player_id": row.get(id_col, 0),
+                        "original_name": name,
+                    }
+
+    # Compare current rosters to historical data
+    roster_changes = []
+
+    for team, players in current_rosters.items():
+        current_team_normalized = normalize_team_abbrev(team)
+
+        for player in players:
+            name_key = normalize_name(player.name)
+
+            if name_key in player_teams:
+                hist = player_teams[name_key]
+                old_team = hist["team"]
+
+                # Player changed teams
+                if old_team and old_team != current_team_normalized:
+                    change = RosterChange(
+                        player_name=player.name,
+                        player_id=hist["player_id"] if hist["player_id"] else None,
+                        change_type=ChangeType.TRADE,
+                        from_team=old_team,
+                        to_team=current_team_normalized,
+                        effective_date=None,
+                        notes=f"Auto-detected: moved from {old_team} to {current_team_normalized}",
+                    )
+                    roster_changes.append(change)
+                    logger.debug(f"Detected move: {player.name} {old_team} -> {current_team_normalized}")
+
+    logger.info(f"Detected {len(roster_changes)} roster changes from MLB API")
+    return roster_changes

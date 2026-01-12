@@ -44,6 +44,7 @@ class ProjectionConfig:
     year_weights: List[float] = field(default_factory=lambda: [5, 4, 3])
     min_pa: int = 50  # Minimum PA to include batter
     min_ip: float = 10.0  # Minimum IP to include pitcher
+    auto_sync_rosters: bool = False  # Auto-fetch rosters from MLB API
 
 
 @dataclass
@@ -91,7 +92,9 @@ class Projector:
         """Generate projections for all 30 MLB teams.
 
         Args:
-            roster_changes: Optional roster changes to apply.
+            roster_changes: Optional roster changes to apply. If auto_sync_rosters
+                is enabled in config, detected changes from MLB API will be
+                merged with these.
 
         Returns:
             Dictionary mapping team abbreviation to TeamProjectionSet.
@@ -110,17 +113,32 @@ class Projector:
         batting_stats = self._normalize_team_names(batting_stats)
         pitching_stats = self._normalize_team_names(pitching_stats)
 
+        # Auto-sync rosters from MLB API if enabled
+        all_roster_changes = list(roster_changes) if roster_changes else []
+
+        if self.config.auto_sync_rosters:
+            from ..data.mlb_api import detect_roster_changes
+            logger.info("Auto-syncing rosters from MLB API...")
+            detected_changes = detect_roster_changes(batting_stats, pitching_stats)
+            if detected_changes:
+                logger.info(f"Detected {len(detected_changes)} roster changes from MLB API")
+                # Add detected changes (manual changes take precedence for same player)
+                manual_players = {c.player_name.lower() for c in all_roster_changes}
+                for change in detected_changes:
+                    if change.player_name.lower() not in manual_players:
+                        all_roster_changes.append(change)
+
         # Apply roster changes to update player teams
         # Build team change mapping for park factor adjustments
         team_changes = {}  # {player_name_lower: (from_team, to_team)}
-        if roster_changes:
-            logger.info(f"Applying {len(roster_changes)} roster changes...")
-            batting_stats = self._apply_roster_changes_to_stats(batting_stats, roster_changes, end_year)
-            pitching_stats = self._apply_roster_changes_to_stats(pitching_stats, roster_changes, end_year)
+        if all_roster_changes:
+            logger.info(f"Applying {len(all_roster_changes)} total roster changes...")
+            batting_stats = self._apply_roster_changes_to_stats(batting_stats, all_roster_changes, end_year)
+            pitching_stats = self._apply_roster_changes_to_stats(pitching_stats, all_roster_changes, end_year)
 
             # Build mapping for park factor adjustments
             from ..data.mlb_api import normalize_name
-            for change in roster_changes:
+            for change in all_roster_changes:
                 if change.from_team and change.to_team and change.from_team != change.to_team:
                     name_key = normalize_name(change.player_name)
                     team_changes[name_key] = (change.from_team, change.to_team)
