@@ -73,44 +73,30 @@ def fetch_current_roster(team: str) -> List[MLBPlayer]:
         return []
 
     try:
-        roster_data = statsapi.roster(team_id, rosterType="40Man")
-        players = []
+        # Use the JSON API for structured data
+        roster_data = statsapi.get(
+            "team_roster",
+            {"teamId": team_id, "rosterType": "40Man"}
+        )
 
-        # Parse the roster string response
-        for line in roster_data.strip().split("\n"):
-            if not line or line.startswith("-"):
+        players = []
+        for entry in roster_data.get("roster", []):
+            person = entry.get("person", {})
+            position = entry.get("position", {})
+            status = entry.get("status", {})
+
+            player_name = person.get("fullName", "")
+            if not player_name:
                 continue
 
-            parts = line.split()
-            if len(parts) >= 3:
-                # Format: "#NN Name Position Status"
-                jersey = parts[0].replace("#", "") if parts[0].startswith("#") else None
-
-                # Find position (usually 2-3 chars like SP, C, OF, etc.)
-                position_idx = -1
-                for i, part in enumerate(parts):
-                    if part in ["P", "SP", "RP", "C", "1B", "2B", "3B", "SS",
-                               "LF", "CF", "RF", "OF", "DH", "IF", "UT"]:
-                        position_idx = i
-                        break
-
-                if position_idx > 0:
-                    name = " ".join(parts[1:position_idx])
-                    position = parts[position_idx]
-                    status = " ".join(parts[position_idx+1:]) if position_idx < len(parts) - 1 else "Active"
-                else:
-                    name = " ".join(parts[1:-1])
-                    position = parts[-1]
-                    status = "Active"
-
-                players.append(MLBPlayer(
-                    mlb_id=0,  # Will need lookup
-                    name=name,
-                    team=team,
-                    position=position,
-                    jersey_number=jersey,
-                    status=status if status else "Active",
-                ))
+            players.append(MLBPlayer(
+                mlb_id=person.get("id", 0),
+                name=player_name,
+                team=team,
+                position=position.get("abbreviation", ""),
+                jersey_number=entry.get("jerseyNumber", ""),
+                status=status.get("description", "Active"),
+            ))
 
         logger.info(f"Fetched {len(players)} players for {team}")
         return players
