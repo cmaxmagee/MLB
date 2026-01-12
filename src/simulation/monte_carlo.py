@@ -32,6 +32,21 @@ TEAM_WIN_STDEV = 7.0
 BATTER_WRC_PLUS_STDEV = 15.0  # wRC+ standard deviation
 PITCHER_FIP_STDEV = 0.50  # FIP standard deviation
 
+# Playing time variance by age (injury risk modeling)
+# Older players have more variance in playing time due to injury risk
+# Values are coefficient of variation (std_dev / mean)
+PLAYING_TIME_CV_BY_AGE = {
+    "young": 0.08,    # Under 26: ~8% variance (most durable)
+    "prime": 0.12,    # 26-30: ~12% variance
+    "veteran": 0.18,  # 31-34: ~18% variance
+    "old": 0.25,      # 35+: ~25% variance (highest injury risk)
+}
+
+# Young player upside: wider distributions for breakout candidates
+YOUNG_PLAYER_AGE_THRESHOLD = 26
+YOUNG_PLAYER_EXPERIENCE_THRESHOLD = 2  # seasons_of_data
+YOUNG_PLAYER_VARIANCE_MULTIPLIER = 1.5  # 50% wider distributions
+
 
 @dataclass
 class SimulationResult:
@@ -90,6 +105,84 @@ class SeasonSimulation:
             })
         df = pd.DataFrame(rows)
         return df.sort_values("Playoff %", ascending=False).reset_index(drop=True)
+
+
+def get_playing_time_variance(age: int) -> float:
+    """Get the coefficient of variation for playing time based on age.
+
+    Older players have higher variance due to increased injury risk.
+
+    Args:
+        age: Player's age for the projection year.
+
+    Returns:
+        Coefficient of variation (std_dev / mean) for playing time.
+    """
+    if age < 26:
+        return PLAYING_TIME_CV_BY_AGE["young"]
+    elif age <= 30:
+        return PLAYING_TIME_CV_BY_AGE["prime"]
+    elif age <= 34:
+        return PLAYING_TIME_CV_BY_AGE["veteran"]
+    else:
+        return PLAYING_TIME_CV_BY_AGE["old"]
+
+
+def is_young_player_with_upside(
+    age: int,
+    seasons_of_data: int,
+) -> bool:
+    """Check if a player qualifies for the young player upside boost.
+
+    Young players with limited experience have wider potential outcomes,
+    both up and down. This function identifies candidates for increased
+    simulation variance.
+
+    Args:
+        age: Player's age for the projection year.
+        seasons_of_data: Number of MLB seasons with significant playing time.
+
+    Returns:
+        True if player qualifies for upside variance boost.
+    """
+    return (
+        age < YOUNG_PLAYER_AGE_THRESHOLD
+        and seasons_of_data < YOUNG_PLAYER_EXPERIENCE_THRESHOLD
+    )
+
+
+def sample_playing_time(
+    projected_pa_or_ip: float,
+    age: int,
+    is_pitcher: bool = False,
+) -> float:
+    """Sample playing time with age-based injury variance.
+
+    Instead of using deterministic playing time projections, this samples
+    from a distribution where variance increases with age (injury risk).
+
+    Args:
+        projected_pa_or_ip: Projected PA (batters) or IP (pitchers).
+        age: Player's age for the projection year.
+        is_pitcher: Whether this is a pitcher (affects bounds).
+
+    Returns:
+        Sampled playing time value.
+    """
+    cv = get_playing_time_variance(age)
+    std_dev = projected_pa_or_ip * cv
+
+    sampled = np.random.normal(projected_pa_or_ip, std_dev)
+
+    # Apply reasonable bounds
+    if is_pitcher:
+        # IP bounds: minimum 0, max depends on starter vs reliever
+        sampled = max(0, min(sampled, projected_pa_or_ip * 1.3))
+    else:
+        # PA bounds: minimum 0, max ~720 (everyday player full season)
+        sampled = max(0, min(sampled, 720))
+
+    return sampled
 
 
 def run_simulation(
@@ -236,25 +329,49 @@ def run_simulation_with_player_variance(
             # Sample batter performances
             sampled_batting_runs = 0.0
             for batter in proj_set.batters:
+                # Sample playing time with injury variance
+                sampled_pa = sample_playing_time(
+                    batter.projected_pa,
+                    batter.age,
+                    is_pitcher=False,
+                )
+
                 # wRC+ varies with std ~15 points
                 # Confidence reduces variance
                 batter_std = BATTER_WRC_PLUS_STDEV * (2.0 - batter.projection_confidence)
+
+                # Young player upside: wider distribution for breakout candidates
+                if is_young_player_with_upside(batter.age, batter.seasons_of_data):
+                    batter_std *= YOUNG_PLAYER_VARIANCE_MULTIPLIER
+
                 sampled_wrc_plus = np.random.normal(
                     batter.projected_wrc_plus, batter_std
                 )
-                # Convert sampled wRC+ to batting runs
-                sampled_runs = (sampled_wrc_plus - 100) / 100 * batter.projected_pa * 0.12
+                # Convert sampled wRC+ to batting runs using sampled PA
+                sampled_runs = (sampled_wrc_plus - 100) / 100 * sampled_pa * 0.12
                 sampled_batting_runs += sampled_runs
 
             # Sample pitcher performances
             sampled_pitching_runs = 0.0
             for pitcher in proj_set.pitchers:
+                # Sample playing time with injury variance
+                sampled_ip = sample_playing_time(
+                    pitcher.projected_ip,
+                    pitcher.age,
+                    is_pitcher=True,
+                )
+
                 # FIP varies with std ~0.5
                 pitcher_std = PITCHER_FIP_STDEV * (2.0 - pitcher.projection_confidence)
+
+                # Young player upside: wider distribution for breakout candidates
+                if is_young_player_with_upside(pitcher.age, pitcher.seasons_of_data):
+                    pitcher_std *= YOUNG_PLAYER_VARIANCE_MULTIPLIER
+
                 sampled_fip = np.random.normal(pitcher.projected_fip, pitcher_std)
-                # Convert sampled FIP to pitching runs (negative FIP diff = good)
+                # Convert sampled FIP to pitching runs using sampled IP
                 league_fip = 4.00
-                sampled_runs = -((sampled_fip - league_fip) / 9 * pitcher.projected_ip)
+                sampled_runs = -((sampled_fip - league_fip) / 9 * sampled_ip)
                 sampled_pitching_runs += sampled_runs
 
             # Calculate team runs

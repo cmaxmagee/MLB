@@ -157,7 +157,8 @@ MLB/
 ├── tests/
 │   ├── test_projections.py   # projection unit tests
 │   ├── test_schedule.py      # SOS calculation tests
-│   └── test_roster_sync.py   # roster sync tests
+│   ├── test_roster_sync.py   # roster sync tests
+│   └── test_player_variance.py  # injury/upside variance tests
 ├── requirements.txt
 └── claude.md                 # this file
 ```
@@ -225,6 +226,22 @@ Automatically identifies and boosts playing time for young breakout players:
 Adjusts projections when players change teams:
 - Uses FanGraphs park factors
 - Applies adjustment to batting stats for team changes
+
+### Injury Variance Modeling
+Samples playing time with age-based variance instead of using deterministic projections:
+- Young players (<26): ~8% coefficient of variation (most durable)
+- Prime (26-30): ~12% coefficient of variation
+- Veteran (31-34): ~18% coefficient of variation
+- Old (35+): ~25% coefficient of variation (highest injury risk)
+- Each simulation samples PA/IP from a normal distribution around the projection
+- Allows for realistic injury scenarios (e.g., 32-year-old gets 350 PA instead of projected 550)
+
+### Young Player Upside
+Widens performance distributions for breakout candidates:
+- Applies to players <26 years old with <2 seasons of MLB data
+- Stat variance (wRC+, FIP) increased by 50% for qualifying players
+- Models the higher uncertainty and potential breakout/bust scenarios for prospects
+- Combined with injury variance, creates realistic outcome ranges for young players
 
 ## Out of Scope (for v1)
 
