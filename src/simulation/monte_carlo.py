@@ -68,7 +68,9 @@ class SimulationResult:
     division_winner_pct: float = 0.0
     wild_card_pct: float = 0.0
     playoff_pct: float = 0.0
-    world_series_pct: float = 0.0
+    pennant_pct: float = 0.0  # League championship (ALCS/NLCS winner)
+    world_series_pct: float = 0.0  # World Series appearance (same as pennant)
+    champion_pct: float = 0.0  # World Series winner
 
     # Additional metrics
     wins_over_500_pct: float = 0.0
@@ -102,6 +104,8 @@ class SeasonSimulation:
                 "Div %": round(result.division_winner_pct, 1),
                 "WC %": round(result.wild_card_pct, 1),
                 "Playoff %": round(result.playoff_pct, 1),
+                "Pennant %": round(result.pennant_pct, 1),
+                "WS Champ %": round(result.champion_pct, 1),
             })
         df = pd.DataFrame(rows)
         return df.sort_values("Playoff %", ascending=False).reset_index(drop=True)
@@ -424,13 +428,68 @@ def run_simulation_with_player_variance(
     return simulation
 
 
+def _simulate_series(
+    team_a_wins: float,
+    team_b_wins: float,
+    best_of: int = 7,
+) -> float:
+    """Calculate probability of team A winning a playoff series using log5.
+
+    Uses the log5 formula to convert win totals to head-to-head probability,
+    then calculates series win probability.
+
+    Args:
+        team_a_wins: Team A's season win total.
+        team_b_wins: Team B's season win total.
+        best_of: Series length (3, 5, or 7).
+
+    Returns:
+        Probability of team A winning the series (0-1).
+    """
+    # Convert wins to win percentage
+    pct_a = team_a_wins / 162
+    pct_b = team_b_wins / 162
+
+    # Log5 formula for head-to-head probability
+    # P(A beats B) = (pA * (1-pB)) / (pA * (1-pB) + pB * (1-pA))
+    if pct_a + pct_b == 0:
+        p_a_wins_game = 0.5
+    else:
+        numerator = pct_a * (1 - pct_b)
+        denominator = pct_a * (1 - pct_b) + pct_b * (1 - pct_a)
+        p_a_wins_game = numerator / denominator if denominator > 0 else 0.5
+
+    # Add small home field advantage for higher seed (~2%)
+    if team_a_wins > team_b_wins:
+        p_a_wins_game = min(0.95, p_a_wins_game + 0.02)
+    elif team_b_wins > team_a_wins:
+        p_a_wins_game = max(0.05, p_a_wins_game - 0.02)
+
+    # Calculate series win probability using binomial
+    wins_needed = (best_of // 2) + 1
+    p_a_wins_series = 0.0
+
+    # Sum probability of A winning in exactly wins_needed + k games
+    # where k is extra games (0 to wins_needed - 1)
+    from math import comb
+    for losses in range(wins_needed):
+        # A wins 'wins_needed' games and loses 'losses' games
+        # Last game must be a win for A
+        games_before_last = wins_needed - 1 + losses
+        ways = comb(games_before_last, losses)
+        prob = ways * (p_a_wins_game ** wins_needed) * ((1 - p_a_wins_game) ** losses)
+        p_a_wins_series += prob
+
+    return p_a_wins_series
+
+
 def _calculate_playoff_odds(
     simulation: SeasonSimulation,
     team_projections: pd.DataFrame,
     simulated_wins: Dict[str, np.ndarray],
     iterations: int,
 ) -> None:
-    """Calculate division winner and wild card odds."""
+    """Calculate division winner, wild card, pennant, and championship odds."""
 
     # Group teams by division
     divisions: Dict[str, List[str]] = {}
@@ -444,36 +503,76 @@ def _calculate_playoff_odds(
     division_win_counts = {team: 0 for team in simulated_wins}
     wild_card_counts = {team: 0 for team in simulated_wins}
     last_place_counts = {team: 0 for team in simulated_wins}
+    pennant_counts = {team: 0 for team in simulated_wins}
+    champion_counts = {team: 0 for team in simulated_wins}
 
-    # Vectorized playoff calculation
+    # Playoff simulation for each iteration
     for i in range(iterations):
         # Division winners
-        sim_division_winners = set()
+        sim_division_winners = {}  # {division: (winner, wins)}
         for div, div_teams in divisions.items():
             wins_this_sim = {t: simulated_wins[t][i] for t in div_teams}
             winner = max(wins_this_sim, key=wins_this_sim.get)
             division_win_counts[winner] += 1
-            sim_division_winners.add(winner)
+            sim_division_winners[div] = (winner, wins_this_sim[winner])
 
             # Last place
             loser = min(wins_this_sim, key=wins_this_sim.get)
             last_place_counts[loser] += 1
 
-        # Wild cards - 3 per league
+        # Build playoff brackets for each league
+        league_champions = {}
+
         for league in ["AL", "NL"]:
+            # Get division winners for this league, sorted by wins
+            league_div_winners = [
+                (team, wins) for div, (team, wins) in sim_division_winners.items()
+                if league in div
+            ]
+            league_div_winners.sort(key=lambda x: x[1], reverse=True)
+
+            # Get wild card teams
             league_non_winners = [
-                t for div, teams in divisions.items()
+                (t, simulated_wins[t][i])
+                for div, teams in divisions.items()
                 if league in div
                 for t in teams
-                if t not in sim_division_winners
+                if t != sim_division_winners[div][0]
             ]
-            # Sort by wins this simulation
-            league_non_winners.sort(
-                key=lambda t: simulated_wins[t][i], reverse=True
-            )
-            # Top 3 get wild card spots
-            for wc_team in league_non_winners[:3]:
+            league_non_winners.sort(key=lambda x: x[1], reverse=True)
+            wild_cards = league_non_winners[:3]
+
+            # Record wild card counts
+            for wc_team, _ in wild_cards:
                 wild_card_counts[wc_team] += 1
+
+            # Seeds: 1-3 are division winners, 4-6 are wild cards
+            seeds = league_div_winners + wild_cards  # [(team, wins), ...]
+
+            # Wild Card Round (best of 3)
+            # #3 vs #6, #4 vs #5
+            wc_game1_winner = _pick_series_winner(seeds[2], seeds[5], 3)
+            wc_game2_winner = _pick_series_winner(seeds[3], seeds[4], 3)
+
+            # Division Series (best of 5)
+            # #1 vs lowest remaining seed, #2 vs other
+            # Determine matchups based on seeds
+            wc_winners = sorted([wc_game1_winner, wc_game2_winner], key=lambda x: x[1], reverse=True)
+
+            # #1 plays lowest remaining, #2 plays highest remaining
+            ds1_winner = _pick_series_winner(seeds[0], wc_winners[1], 5)  # #1 vs lower
+            ds2_winner = _pick_series_winner(seeds[1], wc_winners[0], 5)  # #2 vs higher
+
+            # League Championship Series (best of 7)
+            lcs_winner = _pick_series_winner(ds1_winner, ds2_winner, 7)
+            pennant_counts[lcs_winner[0]] += 1
+            league_champions[league] = lcs_winner
+
+        # World Series (best of 7)
+        al_champ = league_champions["AL"]
+        nl_champ = league_champions["NL"]
+        ws_winner = _pick_series_winner(al_champ, nl_champ, 7)
+        champion_counts[ws_winner[0]] += 1
 
     # Convert to percentages
     for team in simulated_wins:
@@ -481,7 +580,31 @@ def _calculate_playoff_odds(
         result.division_winner_pct = division_win_counts[team] / iterations * 100
         result.wild_card_pct = wild_card_counts[team] / iterations * 100
         result.playoff_pct = result.division_winner_pct + result.wild_card_pct
+        result.pennant_pct = pennant_counts[team] / iterations * 100
+        result.world_series_pct = result.pennant_pct  # Same as pennant (WS appearance)
+        result.champion_pct = champion_counts[team] / iterations * 100
         result.last_place_pct = last_place_counts[team] / iterations * 100
+
+
+def _pick_series_winner(
+    team_a: tuple,
+    team_b: tuple,
+    best_of: int,
+) -> tuple:
+    """Randomly pick a series winner based on probability.
+
+    Args:
+        team_a: (team_name, wins) tuple.
+        team_b: (team_name, wins) tuple.
+        best_of: Series length.
+
+    Returns:
+        Winning team's (team_name, wins) tuple.
+    """
+    p_a_wins = _simulate_series(team_a[1], team_b[1], best_of)
+    if np.random.random() < p_a_wins:
+        return team_a
+    return team_b
 
 
 def calculate_matchup_probability(

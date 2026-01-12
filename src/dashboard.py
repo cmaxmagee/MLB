@@ -345,6 +345,45 @@ def show_standings_tab(simulation: SeasonSimulation, projections: Dict[str, Team
     # Add division info
     odds_df["Division"] = odds_df["Team"].map(TEAM_TO_DIVISION)
 
+    # World Series Championship Odds - Featured section
+    st.subheader("World Series Championship Odds")
+
+    # Top 10 championship contenders
+    top_ws = odds_df.nlargest(10, "WS Champ %")
+
+    fig_ws = px.bar(
+        top_ws,
+        x="Team",
+        y="WS Champ %",
+        color="Division",
+        title="Top 10 World Series Contenders",
+        text="WS Champ %",
+    )
+    fig_ws.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+    fig_ws.update_layout(yaxis_title="World Series Win Probability (%)", xaxis_title="")
+    st.plotly_chart(fig_ws, use_container_width=True)
+
+    # Championship odds table
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**American League Pennant Odds**")
+        al_teams = odds_df[odds_df["Division"].str.startswith("AL")].sort_values("Pennant %", ascending=False)
+        st.dataframe(
+            al_teams[["Team", "Proj W", "Playoff %", "Pennant %", "WS Champ %"]].head(8),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    with col2:
+        st.markdown("**National League Pennant Odds**")
+        nl_teams = odds_df[odds_df["Division"].str.startswith("NL")].sort_values("Pennant %", ascending=False)
+        st.dataframe(
+            nl_teams[["Team", "Proj W", "Playoff %", "Pennant %", "WS Champ %"]].head(8),
+            hide_index=True,
+            use_container_width=True,
+        )
+
     # Division standings
     st.subheader("Division Standings")
 
@@ -357,7 +396,7 @@ def show_standings_tab(simulation: SeasonSimulation, projections: Dict[str, Team
             div_teams = odds_df[odds_df["Division"] == div].sort_values("Proj W", ascending=False)
             st.markdown(f"**{div}**")
             st.dataframe(
-                div_teams[["Team", "Proj W", "10th", "90th", "Div %", "Playoff %"]],
+                div_teams[["Team", "Proj W", "10th", "90th", "Div %", "WC %", "Playoff %", "WS Champ %"]],
                 hide_index=True,
                 use_container_width=True,
             )
@@ -368,7 +407,7 @@ def show_standings_tab(simulation: SeasonSimulation, projections: Dict[str, Team
             div_teams = odds_df[odds_df["Division"] == div].sort_values("Proj W", ascending=False)
             st.markdown(f"**{div}**")
             st.dataframe(
-                div_teams[["Team", "Proj W", "10th", "90th", "Div %", "Playoff %"]],
+                div_teams[["Team", "Proj W", "10th", "90th", "Div %", "WC %", "Playoff %", "WS Champ %"]],
                 hide_index=True,
                 use_container_width=True,
             )
@@ -404,7 +443,7 @@ def show_team_details_tab(simulation: SeasonSimulation, projections: Dict[str, T
         team_proj = projections[selected_team]
         team_result = simulation.team_results[selected_team]
 
-        # Overview metrics
+        # Overview metrics - main row
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
@@ -415,6 +454,18 @@ def show_team_details_tab(simulation: SeasonSimulation, projections: Dict[str, T
             st.metric("Division Winner", f"{team_result.division_winner_pct:.1f}%")
         with col4:
             st.metric("Wild Card", f"{team_result.wild_card_pct:.1f}%")
+
+        # Championship odds row
+        col5, col6, col7, col8 = st.columns(4)
+
+        with col5:
+            st.metric("Pennant (LCS)", f"{team_result.pennant_pct:.1f}%")
+        with col6:
+            st.metric("WS Champion", f"{team_result.champion_pct:.1f}%")
+        with col7:
+            pass  # Empty for layout
+        with col8:
+            pass  # Empty for layout
 
         # Win distribution histogram
         st.subheader("Win Distribution")
