@@ -100,6 +100,10 @@ class Projector:
         batting_stats = fetch_batting_stats(start_year, end_year, qual=self.config.min_pa)
         pitching_stats = fetch_pitching_stats(start_year, end_year, qual=self.config.min_ip)
 
+        # Normalize team abbreviations (ATH -> OAK, etc.)
+        batting_stats = self._normalize_team_names(batting_stats)
+        pitching_stats = self._normalize_team_names(pitching_stats)
+
         # Apply roster changes to update player teams
         if roster_changes:
             logger.info(f"Applying {len(roster_changes)} roster changes...")
@@ -110,8 +114,10 @@ class Projector:
         most_recent_batting = batting_stats[batting_stats["Season"] == end_year]
         most_recent_pitching = pitching_stats[pitching_stats["Season"] == end_year]
 
-        # Group by team
-        teams = set(most_recent_batting["Team"].unique()) | set(most_recent_pitching["Team"].unique())
+        # Group by team (filter out invalid team names)
+        all_teams = set(most_recent_batting["Team"].unique()) | set(most_recent_pitching["Team"].unique())
+        # Valid MLB team abbreviations are 2-3 uppercase letters
+        teams = {t for t in all_teams if t and isinstance(t, str) and len(t) <= 3 and t.isalpha()}
 
         projections = {}
         for team in sorted(teams):
@@ -281,6 +287,21 @@ class Projector:
             projected_runs_allowed=projected_runs_allowed,
             projected_wins=projected_wins,
         )
+
+    def _normalize_team_names(self, stats: pd.DataFrame) -> pd.DataFrame:
+        """Normalize team abbreviations in stats DataFrame.
+
+        FanGraphs uses different abbreviations (ATH, FLA, etc.) than standard MLB.
+        This ensures consistent team names throughout the projection.
+        """
+        from ..data.mlb_api import normalize_team_abbrev
+
+        stats = stats.copy()
+        if "Team" in stats.columns:
+            stats["Team"] = stats["Team"].apply(
+                lambda x: normalize_team_abbrev(x) if pd.notna(x) else x
+            )
+        return stats
 
     def _apply_roster_changes_to_stats(
         self,
