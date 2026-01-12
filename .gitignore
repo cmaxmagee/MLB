@@ -44,6 +44,7 @@ htmlcov/
 # Data cache (keep structure, ignore contents)
 data/cache/*
 !data/cache/.gitkeep
+!data/cache/simulation_*.json
 
 # Don't ignore roster changes (user input)
 !data/roster_changes/
