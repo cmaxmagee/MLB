@@ -577,5 +577,117 @@ def status():
     click.echo("All phases complete! Run 'project --help' to get started.")
 
 
+# =============================================================================
+# Dashboard Cache Commands
+# =============================================================================
+
+@cli.command()
+@click.option("--year", "-y", default=2026, help="Projection year")
+@click.option("--iterations", "-n", default=10000, help="Number of simulations")
+@click.option("--roster-changes", "-r", type=click.Path(exists=True), help="Roster changes CSV")
+@click.option("--auto-sync/--no-auto-sync", default=True, help="Auto-sync rosters from MLB API")
+@click.option("--seed", type=int, help="Random seed for reproducibility")
+@click.option("--output-dir", "-o", type=click.Path(), help="Output directory for cache")
+def generate_cache(
+    year: int,
+    iterations: int,
+    roster_changes: Optional[str],
+    auto_sync: bool,
+    seed: Optional[int],
+    output_dir: Optional[str],
+):
+    """Generate cached simulation results for the dashboard.
+
+    This runs a full projection and simulation, then saves the results
+    to disk so the dashboard can load them instantly without re-running.
+
+    Example:
+        python -m src.main generate-cache --year 2026 -n 10000
+
+    The dashboard will automatically load the latest cached results.
+    """
+    from .projections import Projector, ProjectionConfig
+    from .simulation.monte_carlo import run_simulation_with_player_variance
+    from .data.cache_results import save_simulation_results
+
+    click.echo(f"\n{'='*60}")
+    click.echo(f"  Generating Dashboard Cache - {year} Season")
+    click.echo(f"{'='*60}")
+    click.echo(f"Simulations: {iterations:,}")
+    click.echo(f"Auto-sync rosters: {'Yes' if auto_sync else 'No'}")
+    if seed:
+        click.echo(f"Random seed: {seed}")
+    click.echo()
+
+    # Configure projections
+    config = ProjectionConfig(
+        projection_year=year,
+        historical_years=3,
+        auto_sync_rosters=auto_sync,
+    )
+
+    # Generate projections
+    click.echo("Step 1/3: Generating player projections...")
+    projector = Projector(config)
+
+    # Load roster changes if provided
+    changes = None
+    if roster_changes:
+        changes = load_roster_changes(roster_changes)
+        click.echo(f"  Loaded {len(changes)} roster changes")
+
+    team_projections = projector.project_all_teams(roster_changes=changes)
+    click.echo(f"  Projected {len(team_projections)} teams")
+
+    # Run simulation with player variance (always use for best results)
+    click.echo("\nStep 2/3: Running Monte Carlo simulation...")
+    simulation = run_simulation_with_player_variance(
+        team_projections,
+        iterations=iterations,
+        random_seed=seed,
+    )
+
+    # Save to cache
+    click.echo("\nStep 3/3: Saving results to cache...")
+    output_path = Path(output_dir) if output_dir else None
+    cache_path = save_simulation_results(
+        projections=team_projections,
+        simulation=simulation,
+        output_dir=output_path,
+        year=year,
+    )
+
+    click.echo(f"\n{'='*60}")
+    click.echo("  Cache Generated Successfully!")
+    click.echo(f"{'='*60}")
+    click.echo(f"Saved to: {cache_path}")
+    click.echo(f"\nTo start the dashboard in read-only mode:")
+    click.echo(f"  streamlit run src/dashboard.py")
+    click.echo(f"\nThe dashboard will automatically load the cached {year} results.")
+
+
+@cli.command()
+def list_cache():
+    """List available cached simulation results."""
+    from .data.cache_results import get_available_cache_files
+
+    files = get_available_cache_files()
+
+    if not files:
+        click.echo("No cached simulation results found.")
+        click.echo("\nGenerate cache with:")
+        click.echo("  python -m src.main generate-cache --year 2026")
+        return
+
+    click.echo("\nAvailable cached simulations:")
+    click.echo("-" * 50)
+
+    for f in files:
+        label = "(latest)" if f["is_latest"] else f["timestamp"]
+        click.echo(f"  {f['year']}: {label}")
+        click.echo(f"         {f['path']}")
+    click.echo()
+
+
 if __name__ == "__main__":
     cli()

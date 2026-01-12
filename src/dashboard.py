@@ -1,9 +1,14 @@
 """Streamlit dashboard for MLB Season Projections.
 
 Run with: streamlit run src/dashboard.py
+
+Supports two modes:
+1. Read-only mode: Loads pre-computed results from cache (instant)
+2. Live mode: Runs projections on-demand (requires API access)
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -30,10 +35,15 @@ from src.simulation.monte_carlo import (
     run_simulation_with_player_variance,
     SeasonSimulation,
 )
+from src.data.cache_results import load_simulation_results, get_available_cache_files
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Environment variable to control mode
+# Set DASHBOARD_MODE=live to enable running new projections
+DASHBOARD_MODE = os.environ.get("DASHBOARD_MODE", "auto")  # "auto", "readonly", "live"
 
 # Page config
 st.set_page_config(
@@ -41,6 +51,28 @@ st.set_page_config(
     page_icon="⚾",
     layout="wide",
 )
+
+
+def load_cached_results(year: int = 2026) -> bool:
+    """Try to load cached simulation results.
+
+    Returns True if cache was loaded successfully.
+    """
+    result = load_simulation_results(year=year)
+
+    if result is None:
+        return False
+
+    projections, simulation, batter_df, pitcher_df, metadata = result
+
+    st.session_state.projections = projections
+    st.session_state.simulation = simulation
+    st.session_state.batter_df = batter_df
+    st.session_state.pitcher_df = pitcher_df
+    st.session_state.metadata = metadata
+    st.session_state.from_cache = True
+
+    return True
 
 
 def main():
@@ -57,63 +89,119 @@ def main():
         st.session_state.batter_df = None
     if "pitcher_df" not in st.session_state:
         st.session_state.pitcher_df = None
+    if "metadata" not in st.session_state:
+        st.session_state.metadata = None
+    if "from_cache" not in st.session_state:
+        st.session_state.from_cache = False
+    if "cache_checked" not in st.session_state:
+        st.session_state.cache_checked = False
 
-    # Sidebar controls
+    # Check for cached results on first load
+    if not st.session_state.cache_checked:
+        st.session_state.cache_checked = True
+        # Try to load 2026, then 2025
+        for year in [2026, 2025]:
+            if load_cached_results(year):
+                break
+
+    # Determine if we're in read-only mode
+    is_readonly = DASHBOARD_MODE == "readonly" or (
+        DASHBOARD_MODE == "auto" and st.session_state.from_cache
+    )
+
+    # Sidebar
     with st.sidebar:
-        st.header("Configuration")
+        if st.session_state.from_cache and st.session_state.metadata:
+            # Show cache info
+            meta = st.session_state.metadata
+            st.success("📊 Viewing cached projections")
+            st.caption(f"Generated: {meta['timestamp'][:10]}")
+            st.caption(f"Year: {meta['year']}")
+            st.caption(f"Iterations: {meta['iterations']:,}")
 
-        projection_year = st.selectbox(
-            "Projection Year",
-            options=[2025, 2026, 2027],
-            index=1,
-        )
+            # Show available cache years
+            cache_files = get_available_cache_files()
+            available_years = sorted(set(f["year"] for f in cache_files if f["is_latest"]), reverse=True)
 
-        iterations = st.select_slider(
-            "Simulation Iterations",
-            options=[1000, 5000, 10000, 25000, 50000],
-            value=10000,
-        )
+            if len(available_years) > 1:
+                st.divider()
+                selected_year = st.selectbox(
+                    "Switch Year",
+                    options=available_years,
+                    index=available_years.index(meta["year"]) if meta["year"] in available_years else 0,
+                )
+                if selected_year != meta["year"]:
+                    if load_cached_results(selected_year):
+                        st.rerun()
 
-        player_variance = st.checkbox(
-            "Player Variance",
-            value=True,
-            help="Use player-level variance with injury modeling and young player upside",
-        )
+        # Show live controls only if not readonly
+        if DASHBOARD_MODE == "live" or (DASHBOARD_MODE == "auto" and not st.session_state.from_cache):
+            st.header("Configuration")
 
-        auto_sync = st.checkbox(
-            "Auto-Sync Rosters",
-            value=False,
-            help="Automatically fetch current rosters from MLB API",
-        )
-
-        random_seed = st.number_input(
-            "Random Seed (optional)",
-            min_value=0,
-            max_value=99999,
-            value=0,
-            help="Set to 0 for random, or enter a seed for reproducibility",
-        )
-
-        st.divider()
-
-        run_button = st.button(
-            "🚀 Run Projections",
-            type="primary",
-            use_container_width=True,
-        )
-
-        if run_button:
-            run_projections(
-                projection_year=projection_year,
-                iterations=iterations,
-                player_variance=player_variance,
-                auto_sync=auto_sync,
-                random_seed=random_seed if random_seed > 0 else None,
+            projection_year = st.selectbox(
+                "Projection Year",
+                options=[2025, 2026, 2027],
+                index=1,
             )
+
+            iterations = st.select_slider(
+                "Simulation Iterations",
+                options=[1000, 5000, 10000, 25000, 50000],
+                value=10000,
+            )
+
+            player_variance = st.checkbox(
+                "Player Variance",
+                value=True,
+                help="Use player-level variance with injury modeling and young player upside",
+            )
+
+            auto_sync = st.checkbox(
+                "Auto-Sync Rosters",
+                value=False,
+                help="Automatically fetch current rosters from MLB API",
+            )
+
+            random_seed = st.number_input(
+                "Random Seed (optional)",
+                min_value=0,
+                max_value=99999,
+                value=0,
+                help="Set to 0 for random, or enter a seed for reproducibility",
+            )
+
+            st.divider()
+
+            run_button = st.button(
+                "🚀 Run Projections",
+                type="primary",
+                use_container_width=True,
+            )
+
+            if run_button:
+                run_projections(
+                    projection_year=projection_year,
+                    iterations=iterations,
+                    player_variance=player_variance,
+                    auto_sync=auto_sync,
+                    random_seed=random_seed if random_seed > 0 else None,
+                )
+
+        # Footer with mode info
+        st.divider()
+        if is_readonly:
+            st.caption("📖 Read-only mode")
+        else:
+            st.caption("⚡ Live mode")
 
     # Main content
     if st.session_state.simulation is None:
-        st.info("Configure settings in the sidebar and click 'Run Projections' to begin.")
+        st.info("No projection data available.")
+        if DASHBOARD_MODE != "readonly":
+            st.markdown("Configure settings in the sidebar and click 'Run Projections' to begin.")
+        else:
+            st.markdown("Cached projections not found. Please generate cache using:")
+            st.code("python -m src.main generate-cache --year 2026")
         show_demo_placeholder()
     else:
         show_results()

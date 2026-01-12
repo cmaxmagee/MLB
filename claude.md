@@ -139,7 +139,8 @@ MLB/
 │   │   ├── fetch.py          # pybaseball wrappers
 │   │   ├── cache.py          # local caching of fetched data
 │   │   ├── mlb_api.py        # MLB Stats API for current rosters
-│   │   └── roster_changes.py # parse roster change inputs
+│   │   ├── roster_changes.py # parse roster change inputs
+│   │   └── cache_results.py  # save/load simulation results for dashboard
 │   ├── projections/
 │   │   ├── player.py         # individual player projections
 │   │   ├── playing_time.py   # PA/IP projections by role
@@ -254,6 +255,28 @@ Interactive web interface for projections:
 - **Team Details**: Win distributions, roster breakdowns, outcome probabilities
 - **Player Projections**: Filterable tables for batters and pitchers, stat leaders
 - **Analytics**: Win distribution comparisons, run differential scatter plots, division strength
+
+**Dashboard Modes:**
+- **Read-only mode** (default when cache exists): Loads pre-computed results instantly
+- **Live mode**: Runs projections on-demand (set `DASHBOARD_MODE=live` env var)
+
+### Caching for Public Deployment
+Pre-compute projections for instant dashboard loading:
+```bash
+# Generate cache (run periodically, e.g., daily)
+python -m src.main generate-cache --year 2026 -n 10000
+
+# List cached files
+python -m src.main list-cache
+
+# Dashboard auto-loads latest cache
+streamlit run src/dashboard.py
+```
+
+For Streamlit Cloud deployment:
+1. Generate cache locally: `python -m src.main generate-cache --year 2026`
+2. Commit the `data/cache/simulation_2026_latest.json` file
+3. Deploy to Streamlit Cloud - users see instant results
 
 ## Out of Scope
 
