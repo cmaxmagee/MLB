@@ -9,10 +9,13 @@ git pull
 # Install dependencies
 pip install -r requirements.txt
 
-# Run projections with roster changes and player variance
+# Option 1: Run the web dashboard (recommended)
+streamlit run src/dashboard.py
+
+# Option 2: Run CLI projections with roster changes and player variance
 python -m src.main project --year 2026 -r data/roster_changes/synced_changes.csv --player-variance
 
-# Or with auto-sync from MLB API (fetches current rosters automatically)
+# Option 3: CLI with auto-sync from MLB API (fetches current rosters automatically)
 python -m src.main project --year 2026 --auto-sync --player-variance
 
 # Generate synced roster changes CSV first (optional)
@@ -150,7 +153,8 @@ MLB/
 │   ├── output/
 │   │   ├── reports.py        # generate summary reports
 │   │   └── visualize.py      # charts and distributions
-│   └── main.py               # CLI entry point
+│   ├── main.py               # CLI entry point
+│   └── dashboard.py          # Streamlit web dashboard
 ├── data/
 │   ├── roster_changes/       # input CSV files
 │   └── cache/                # cached API responses
@@ -243,14 +247,21 @@ Widens performance distributions for breakout candidates:
 - Models the higher uncertainty and potential breakout/bust scenarios for prospects
 - Combined with injury variance, creates realistic outcome ranges for young players
 
-## Out of Scope (for v1)
+### Streamlit Dashboard (v2)
+Interactive web interface for projections:
+- Run with: `streamlit run src/dashboard.py`
+- **Standings & Playoff Odds**: Division standings, playoff probability leaderboard
+- **Team Details**: Win distributions, roster breakdowns, outcome probabilities
+- **Player Projections**: Filterable tables for batters and pitchers, stat leaders
+- **Analytics**: Win distribution comparisons, run differential scatter plots, division strength
+
+## Out of Scope
 
 - In-season updates
 - Injury projections (beyond age-based decline)
 - Full minor league/prospect integration
 - Trade deadline simulation
 - Game-by-game simulation
-- Web interface (Streamlit could be v2)
 
 ## Notes for Development
 

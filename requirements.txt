@@ -10,6 +10,10 @@ numpy>=1.24.0
 
 # Visualization
 matplotlib>=3.7.0
+plotly>=5.18.0
+
+# Web dashboard
+streamlit>=1.30.0
 
 # Statistical distributions for Monte Carlo
 scipy>=1.10.0
