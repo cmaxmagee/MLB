@@ -500,6 +500,16 @@ def detect_roster_changes(
     # Compare current rosters to historical data
     roster_changes = []
 
+    # Build set of all players currently on ANY 40-man roster
+    current_player_names = set()
+    current_player_teams = {}  # normalized_name -> current_team
+    for team, players in current_rosters.items():
+        current_team_normalized = normalize_team_abbrev(team)
+        for player in players:
+            name_key = normalize_name(player.name)
+            current_player_names.add(name_key)
+            current_player_teams[name_key] = current_team_normalized
+
     for team, players in current_rosters.items():
         current_team_normalized = normalize_team_abbrev(team)
 
@@ -523,6 +533,23 @@ def detect_roster_changes(
                     )
                     roster_changes.append(change)
                     logger.debug(f"Detected move: {player.name} {old_team} -> {current_team_normalized}")
+
+    # Check for players who are no longer on ANY 40-man roster
+    # These are releases, retirements, or players who went to minors/foreign leagues
+    for name_key, hist in player_teams.items():
+        if name_key not in current_player_names and hist["team"]:
+            # Player from historical data is not on any current 40-man roster
+            change = RosterChange(
+                player_name=hist["original_name"],
+                player_id=hist["player_id"] if hist["player_id"] else None,
+                change_type=ChangeType.RELEASE,
+                from_team=hist["team"],
+                to_team=None,
+                effective_date=None,
+                notes="Auto-detected: no longer on any MLB 40-man roster",
+            )
+            roster_changes.append(change)
+            logger.debug(f"Detected release: {hist['original_name']} from {hist['team']}")
 
     logger.info(f"Detected {len(roster_changes)} roster changes from MLB API")
     return roster_changes

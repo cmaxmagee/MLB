@@ -382,12 +382,6 @@ class Projector:
         stats = stats.copy()
 
         for change in roster_changes:
-            if change.change_type not in (ChangeType.TRADE, ChangeType.SIGNING):
-                continue
-
-            if not change.to_team:
-                continue
-
             # Find player by name (case-insensitive)
             name_mask = stats["Name"].str.lower() == change.player_name.lower()
 
@@ -399,11 +393,22 @@ class Projector:
             else:
                 mask = name_mask
 
-            if mask.any():
-                # Update team for most recent year's stats
-                year_mask = stats["Season"] == most_recent_year
-                stats.loc[mask & year_mask, "Team"] = change.to_team
-                logger.debug(f"Moved {change.player_name} to {change.to_team}")
+            if change.change_type in (ChangeType.RELEASE, ChangeType.RETIREMENT):
+                # Remove player from most recent year (they're no longer on a 40-man)
+                if mask.any():
+                    year_mask = stats["Season"] == most_recent_year
+                    stats = stats[~(mask & year_mask)]
+                    logger.debug(f"Removed {change.player_name} (no longer on 40-man)")
+
+            elif change.change_type in (ChangeType.TRADE, ChangeType.SIGNING):
+                if not change.to_team:
+                    continue
+
+                if mask.any():
+                    # Update team for most recent year's stats
+                    year_mask = stats["Season"] == most_recent_year
+                    stats.loc[mask & year_mask, "Team"] = change.to_team
+                    logger.debug(f"Moved {change.player_name} to {change.to_team}")
 
         return stats
 
