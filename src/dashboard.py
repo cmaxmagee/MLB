@@ -514,37 +514,29 @@ def show_team_details_tab(simulation: SeasonSimulation, projections: Dict[str, T
 
         roster_tab1, roster_tab2 = st.tabs(["Batters", "Pitchers"])
 
+        # Get player data from session state DataFrames (works with cached data)
+        batter_df = st.session_state.batter_df
+        pitcher_df = st.session_state.pitcher_df
+
         with roster_tab1:
-            batter_data = []
-            for b in sorted(team_proj.batters, key=lambda x: -x.projected_pa):
-                batter_data.append({
-                    "Name": b.name,
-                    "Age": b.age,
-                    "PA": round(b.projected_pa),
-                    "AVG": f"{b.projected_avg:.3f}",
-                    "OBP": f"{b.projected_obp:.3f}",
-                    "SLG": f"{b.projected_slg:.3f}",
-                    "wRC+": round(b.projected_wrc_plus),
-                    "HR": round(b.projected_hr),
-                    "Runs": round(b.projected_batting_runs, 1),
-                })
-            st.dataframe(pd.DataFrame(batter_data), hide_index=True, use_container_width=True)
+            if batter_df is not None and len(batter_df) > 0:
+                team_batters = batter_df[batter_df["Team"] == selected_team].copy()
+                team_batters = team_batters.sort_values("PA", ascending=False)
+                display_cols = ["Name", "Age", "PA", "AVG", "OBP", "SLG", "wRC+", "HR", "Batting Runs"]
+                available_cols = [c for c in display_cols if c in team_batters.columns]
+                st.dataframe(team_batters[available_cols], hide_index=True, use_container_width=True)
+            else:
+                st.info("No batter data available")
 
         with roster_tab2:
-            pitcher_data = []
-            for p in sorted(team_proj.pitchers, key=lambda x: -x.projected_ip):
-                pitcher_data.append({
-                    "Name": p.name,
-                    "Age": p.age,
-                    "Role": p.role,
-                    "IP": round(p.projected_ip, 1),
-                    "ERA": f"{p.projected_era:.2f}",
-                    "FIP": f"{p.projected_fip:.2f}",
-                    "WHIP": f"{p.projected_whip:.2f}",
-                    "K/9": f"{p.projected_k_per_9:.1f}",
-                    "Runs": round(p.projected_pitching_runs, 1),
-                })
-            st.dataframe(pd.DataFrame(pitcher_data), hide_index=True, use_container_width=True)
+            if pitcher_df is not None and len(pitcher_df) > 0:
+                team_pitchers = pitcher_df[pitcher_df["Team"] == selected_team].copy()
+                team_pitchers = team_pitchers.sort_values("IP", ascending=False)
+                display_cols = ["Name", "Age", "Role", "IP", "ERA", "FIP", "WHIP", "K/9", "Pitching Runs"]
+                available_cols = [c for c in display_cols if c in team_pitchers.columns]
+                st.dataframe(team_pitchers[available_cols], hide_index=True, use_container_width=True)
+            else:
+                st.info("No pitcher data available")
 
 
 def show_player_projections_tab():
