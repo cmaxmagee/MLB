@@ -29,14 +29,18 @@ def save_simulation_results(
     simulation: SeasonSimulation,
     output_dir: Optional[Path] = None,
     year: int = 2026,
+    roster_changes: Optional[List[Dict[str, Any]]] = None,
 ) -> Path:
     """Save projection and simulation results to disk.
+
+    Saves one file per day (overwrites same-day runs) plus a "latest" symlink.
 
     Args:
         projections: Dictionary of team projections.
         simulation: Completed season simulation.
         output_dir: Directory to save results. Defaults to data/cache.
         year: Projection year for filename.
+        roster_changes: Optional list of roster changes applied (for tracking).
 
     Returns:
         Path to the saved results file.
@@ -44,8 +48,9 @@ def save_simulation_results(
     output_dir = output_dir or DEFAULT_CACHE_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"simulation_{year}_{timestamp}.json"
+    # Use date only (one file per day, overwrites same-day runs)
+    date_str = datetime.now().strftime("%Y%m%d")
+    filename = f"simulation_{year}_{date_str}.json"
     filepath = output_dir / filename
 
     # Also save as "latest" for easy loading
@@ -55,6 +60,7 @@ def save_simulation_results(
     data = {
         "metadata": {
             "year": year,
+            "date": date_str,
             "timestamp": datetime.now().isoformat(),
             "iterations": simulation.iterations,
             "random_seed": simulation.random_seed,
@@ -63,6 +69,7 @@ def save_simulation_results(
         "projections": {},
         "batter_projections": [],
         "pitcher_projections": [],
+        "roster_changes": roster_changes or [],
     }
 
     # Serialize team results
@@ -110,7 +117,7 @@ def save_simulation_results(
     data["batter_projections"] = batter_df.to_dict(orient="records")
     data["pitcher_projections"] = pitcher_df.to_dict(orient="records")
 
-    # Write to file
+    # Write to file (overwrites same-day file)
     with open(filepath, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -222,7 +229,7 @@ def get_available_cache_files(
         cache_dir: Directory to search. Defaults to data/cache.
 
     Returns:
-        List of dicts with file info (path, year, timestamp, is_latest).
+        List of dicts with file info (path, year, date, is_latest).
     """
     cache_dir = cache_dir or DEFAULT_CACHE_DIR
 
@@ -237,16 +244,18 @@ def get_available_cache_files(
         if len(parts) >= 3:
             year = int(parts[1])
             is_latest = parts[2] == "latest"
-            timestamp = None if is_latest else "_".join(parts[2:])
+            # Handle both old format (YYYYMMDD_HHMMSS) and new format (YYYYMMDD)
+            date_str = None if is_latest else parts[2]
 
             files.append({
                 "path": filepath,
                 "year": year,
-                "timestamp": timestamp,
+                "date": date_str,
+                "timestamp": date_str,  # Keep for backwards compatibility
                 "is_latest": is_latest,
             })
 
-    return sorted(files, key=lambda x: (x["year"], x["is_latest"]), reverse=True)
+    return sorted(files, key=lambda x: (x["year"], x["date"] or "zzz"), reverse=True)
 
 
 def compare_simulations(
@@ -260,12 +269,16 @@ def compare_simulations(
         previous: Previous simulation results to compare against.
 
     Returns:
-        Dictionary with comparison data including deltas for each team.
+        Dictionary with comparison data including deltas for each team and roster changes.
     """
     comparison = {
-        "current_timestamp": current.get("timestamp", "Unknown"),
-        "previous_timestamp": previous.get("timestamp", "Unknown"),
+        "current_timestamp": current.get("metadata", {}).get("timestamp", current.get("timestamp", "Unknown")),
+        "previous_timestamp": previous.get("metadata", {}).get("timestamp", previous.get("timestamp", "Unknown")),
+        "current_date": current.get("metadata", {}).get("date", ""),
+        "previous_date": previous.get("metadata", {}).get("date", ""),
         "team_changes": [],
+        "roster_changes": [],
+        "player_diffs": [],
     }
 
     current_results = current.get("team_results", {})
@@ -298,7 +311,103 @@ def compare_simulations(
     # Sort by absolute delta in wins (biggest movers first)
     comparison["team_changes"].sort(key=lambda x: abs(x["delta_wins"]), reverse=True)
 
+    # Compare rosters (new roster changes in current that weren't in previous)
+    current_roster_changes = current.get("roster_changes", [])
+    comparison["roster_changes"] = current_roster_changes
+
+    # Compare player rosters between runs
+    comparison["player_diffs"] = compare_player_rosters(current, previous)
+
     return comparison
+
+
+def compare_player_rosters(
+    current: Dict[str, Any],
+    previous: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Compare player rosters between two simulation runs.
+
+    Identifies players added, removed, or moved between teams.
+
+    Args:
+        current: Current simulation data.
+        previous: Previous simulation data.
+
+    Returns:
+        List of player changes with impact in runs.
+    """
+    player_diffs = []
+
+    # Build player lookups by name (case-insensitive)
+    def build_player_lookup(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """Build lookup of players by normalized name."""
+        lookup = {}
+        for player in data.get("batter_projections", []):
+            name = player.get("Name", "").lower()
+            if name:
+                lookup[name] = {
+                    "type": "batter",
+                    "name": player.get("Name"),
+                    "team": player.get("Team"),
+                    "runs": player.get("Batting Runs", 0),
+                    "pa": player.get("PA", 0),
+                }
+        for player in data.get("pitcher_projections", []):
+            name = player.get("Name", "").lower()
+            if name:
+                lookup[name] = {
+                    "type": "pitcher",
+                    "name": player.get("Name"),
+                    "team": player.get("Team"),
+                    "runs": player.get("Pitching Runs", 0),
+                    "ip": player.get("IP", 0),
+                }
+        return lookup
+
+    current_players = build_player_lookup(current)
+    previous_players = build_player_lookup(previous)
+
+    # Find players added (in current but not previous)
+    for name, curr_player in current_players.items():
+        if name not in previous_players:
+            player_diffs.append({
+                "change": "added",
+                "name": curr_player["name"],
+                "type": curr_player["type"],
+                "team": curr_player["team"],
+                "runs_impact": curr_player["runs"],
+                "details": f"Added to {curr_player['team']}",
+            })
+        else:
+            prev_player = previous_players[name]
+            # Check if team changed
+            if curr_player["team"] != prev_player["team"]:
+                player_diffs.append({
+                    "change": "moved",
+                    "name": curr_player["name"],
+                    "type": curr_player["type"],
+                    "from_team": prev_player["team"],
+                    "to_team": curr_player["team"],
+                    "runs_impact": curr_player["runs"],
+                    "details": f"Moved from {prev_player['team']} to {curr_player['team']}",
+                })
+
+    # Find players removed (in previous but not current)
+    for name, prev_player in previous_players.items():
+        if name not in current_players:
+            player_diffs.append({
+                "change": "removed",
+                "name": prev_player["name"],
+                "type": prev_player["type"],
+                "team": prev_player["team"],
+                "runs_impact": -prev_player["runs"],  # Negative because team lost this value
+                "details": f"Removed from {prev_player['team']}",
+            })
+
+    # Sort by absolute runs impact
+    player_diffs.sort(key=lambda x: abs(x.get("runs_impact", 0)), reverse=True)
+
+    return player_diffs
 
 
 def load_raw_cache_file(filepath: Path) -> Optional[Dict[str, Any]]:

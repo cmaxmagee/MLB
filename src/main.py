@@ -650,11 +650,25 @@ def generate_cache(
     # Save to cache
     click.echo("\nStep 3/3: Saving results to cache...")
     output_path = Path(output_dir) if output_dir else None
+
+    # Serialize roster changes for storage
+    roster_changes_data = []
+    for change in projector.applied_roster_changes:
+        roster_changes_data.append({
+            "player_name": change.player_name,
+            "player_id": change.player_id,
+            "change_type": change.change_type.value,
+            "from_team": change.from_team,
+            "to_team": change.to_team,
+            "notes": change.notes,
+        })
+
     cache_path = save_simulation_results(
         projections=team_projections,
         simulation=simulation,
         output_dir=output_path,
         year=year,
+        roster_changes=roster_changes_data,
     )
 
     click.echo(f"\n{'='*60}")

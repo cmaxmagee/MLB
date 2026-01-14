@@ -758,16 +758,16 @@ def show_comparison_tab():
 
     # Get available cache files (non-latest only, for comparison)
     cache_files = get_available_cache_files()
-    historical_files = [f for f in cache_files if not f["is_latest"] and f["timestamp"]]
+    historical_files = [f for f in cache_files if not f["is_latest"] and f.get("date")]
 
     if not historical_files:
         st.info("No historical simulation runs found to compare against.")
         st.markdown("""
         To enable comparison:
-        1. Run `python -m src.main generate-cache --year 2026` multiple times
-        2. Each run creates a timestamped file that can be compared
+        1. Run `python -m src.main generate-cache --year 2026` on different days
+        2. Each day's run is saved separately for comparison
 
-        The comparison will show how projections have changed between runs.
+        The comparison will show how projections and rosters have changed between runs.
         """)
         return
 
@@ -787,15 +787,15 @@ def show_comparison_tab():
     # Let user select a historical run to compare
     st.subheader("Select Previous Run")
 
-    options = {f["timestamp"]: f for f in same_year_files}
-    selected_timestamp = st.selectbox(
+    options = {f["date"]: f for f in same_year_files}
+    selected_date = st.selectbox(
         "Compare current projections to:",
         options=list(options.keys()),
-        format_func=lambda x: f"{x[:8]} {x[9:11]}:{x[11:13]}:{x[13:15]}" if len(x) >= 15 else x,
+        format_func=lambda x: f"{x[:4]}-{x[4:6]}-{x[6:8]}" if x and len(x) >= 8 else x,
     )
 
-    if selected_timestamp:
-        previous_file = options[selected_timestamp]
+    if selected_date:
+        previous_file = options[selected_date]
         previous_data = load_raw_cache_file(previous_file["path"])
 
         if previous_data is None:
@@ -868,6 +868,118 @@ def show_comparison_tab():
                     )
             else:
                 st.caption("No significant decreases")
+
+        # Roster Changes Section
+        player_diffs = comparison.get("player_diffs", [])
+        if player_diffs:
+            st.subheader("Roster Changes")
+            st.markdown("Players added, removed, or moved between runs:")
+
+            # Group by change type
+            added = [p for p in player_diffs if p.get("change") == "added"]
+            removed = [p for p in player_diffs if p.get("change") == "removed"]
+            moved = [p for p in player_diffs if p.get("change") == "moved"]
+
+            # Show summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Players Added", len(added))
+            with col2:
+                st.metric("Players Removed", len(removed))
+            with col3:
+                st.metric("Players Moved", len(moved))
+
+            # Tabs for different change types
+            roster_tab1, roster_tab2, roster_tab3 = st.tabs(["Removed", "Moved", "Added"])
+
+            with roster_tab1:
+                if removed:
+                    st.markdown("**Players no longer on rosters** (impact = runs lost by team)")
+                    removed_df = pd.DataFrame(removed)
+                    removed_df = removed_df.sort_values("runs_impact", ascending=True)
+                    removed_df["Runs Impact"] = removed_df["runs_impact"].apply(
+                        lambda x: f"{x:+.1f}"
+                    )
+                    display_cols = ["name", "type", "team", "Runs Impact", "details"]
+                    display_cols = [c for c in display_cols if c in removed_df.columns]
+                    removed_df.columns = [c.title() if c != "Runs Impact" else c for c in removed_df.columns]
+                    st.dataframe(
+                        removed_df[["Name", "Type", "Team", "Runs Impact"]].head(20),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                else:
+                    st.caption("No players removed")
+
+            with roster_tab2:
+                if moved:
+                    st.markdown("**Players who changed teams**")
+                    moved_df = pd.DataFrame(moved)
+                    moved_df = moved_df.sort_values("runs_impact", key=abs, ascending=False)
+                    moved_df["Runs"] = moved_df["runs_impact"].apply(lambda x: f"{x:+.1f}")
+                    moved_df["Move"] = moved_df.apply(
+                        lambda r: f"{r.get('from_team', '?')} → {r.get('to_team', '?')}", axis=1
+                    )
+                    st.dataframe(
+                        moved_df[["name", "type", "Move", "Runs"]].head(20).rename(
+                            columns={"name": "Name", "type": "Type"}
+                        ),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                else:
+                    st.caption("No players moved")
+
+            with roster_tab3:
+                if added:
+                    st.markdown("**New players on rosters** (impact = runs gained by team)")
+                    added_df = pd.DataFrame(added)
+                    added_df = added_df.sort_values("runs_impact", ascending=False)
+                    added_df["Runs Impact"] = added_df["runs_impact"].apply(
+                        lambda x: f"+{x:.1f}" if x > 0 else f"{x:.1f}"
+                    )
+                    st.dataframe(
+                        added_df[["name", "type", "team", "Runs Impact"]].head(20).rename(
+                            columns={"name": "Name", "type": "Type", "team": "Team"}
+                        ),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                else:
+                    st.caption("No players added")
+
+            # Team impact summary
+            st.subheader("Roster Change Impact by Team")
+
+            # Calculate net runs impact per team
+            team_impact = {}
+            for p in player_diffs:
+                runs = p.get("runs_impact", 0)
+                if p.get("change") == "removed":
+                    team = p.get("team")
+                    if team:
+                        team_impact[team] = team_impact.get(team, 0) + runs  # runs is negative
+                elif p.get("change") == "added":
+                    team = p.get("team")
+                    if team:
+                        team_impact[team] = team_impact.get(team, 0) + runs
+                elif p.get("change") == "moved":
+                    from_team = p.get("from_team")
+                    to_team = p.get("to_team")
+                    if from_team:
+                        team_impact[from_team] = team_impact.get(from_team, 0) - runs
+                    if to_team:
+                        team_impact[to_team] = team_impact.get(to_team, 0) + runs
+
+            if team_impact:
+                impact_df = pd.DataFrame([
+                    {"Team": t, "Net Runs Impact": r}
+                    for t, r in sorted(team_impact.items(), key=lambda x: x[1], reverse=True)
+                ])
+                impact_df["Net Runs Impact"] = impact_df["Net Runs Impact"].apply(
+                    lambda x: f"+{x:.1f}" if x > 0 else f"{x:.1f}"
+                )
+                st.dataframe(impact_df, hide_index=True, use_container_width=True)
 
         # Full comparison table
         st.subheader("Full Comparison")

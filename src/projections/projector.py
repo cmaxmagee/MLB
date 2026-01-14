@@ -84,6 +84,7 @@ class Projector:
         self.config = config or ProjectionConfig()
         self._batting_cache: Dict[int, pd.DataFrame] = {}
         self._pitching_cache: Dict[int, pd.DataFrame] = {}
+        self.applied_roster_changes: List[RosterChange] = []  # Track applied changes
 
     def project_all_teams(
         self,
@@ -142,6 +143,9 @@ class Projector:
                 if change.from_team and change.to_team and change.from_team != change.to_team:
                     name_key = normalize_name(change.player_name)
                     team_changes[name_key] = (change.from_team, change.to_team)
+
+        # Store applied roster changes for later reference
+        self.applied_roster_changes = all_roster_changes
 
         # Get most recent year's rosters as baseline
         most_recent_batting = batting_stats[batting_stats["Season"] == end_year]
