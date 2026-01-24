@@ -40,6 +40,8 @@ from src.data.cache_results import (
     get_available_cache_files,
     compare_simulations,
     load_raw_cache_file,
+    load_historical_time_series,
+    get_trend_summary,
 )
 
 # Configure logging
@@ -311,11 +313,12 @@ def show_results():
     projections: Dict[str, TeamProjectionSet] = st.session_state.projections
 
     # Create tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📈 Standings & Playoff Odds",
         "🏟️ Team Details",
         "👥 Player Projections",
         "📊 Analytics",
+        "📉 Trends",
         "🔄 Compare Runs",
     ])
 
@@ -332,6 +335,9 @@ def show_results():
         show_analytics_tab(simulation, projections)
 
     with tab5:
+        show_trends_tab()
+
+    with tab6:
         show_comparison_tab()
 
 
@@ -750,6 +756,148 @@ def show_analytics_tab(simulation: SeasonSimulation, projections: Dict[str, Team
     )
     fig.update_layout(yaxis_title="Average Team Wins", showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
+
+
+def show_trends_tab():
+    """Display historical trends in projections over time."""
+    st.header("Projection Trends Over Time")
+
+    # Load time series data
+    time_series = load_historical_time_series()
+
+    if time_series.empty:
+        st.info("Not enough historical data to show trends.")
+        st.markdown("""
+        Trends will appear after running simulations on multiple days.
+        Each daily run with `--auto-sync` captures roster changes and projection updates.
+        """)
+        return
+
+    # Get date range
+    min_date = time_series["date"].min()
+    max_date = time_series["date"].max()
+    num_days = (max_date - min_date).days + 1
+
+    st.markdown(f"**Tracking {num_days} days** from {min_date.strftime('%b %d')} to {max_date.strftime('%b %d, %Y')}")
+
+    # Summary of biggest movers
+    st.subheader("Biggest Movers (Since Tracking Began)")
+
+    summary = get_trend_summary(time_series)
+    if not summary.empty:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Rising**")
+            rising = summary[summary["wins_change"] > 0.1].head(5)
+            if not rising.empty:
+                for _, row in rising.iterrows():
+                    st.markdown(
+                        f"**{row['team']}**: {row['last_wins']:.1f} wins "
+                        f"(+{row['wins_change']:.1f})"
+                    )
+            else:
+                st.caption("No significant increases")
+
+        with col2:
+            st.markdown("**Falling**")
+            falling = summary[summary["wins_change"] < -0.1].sort_values("wins_change").head(5)
+            if not falling.empty:
+                for _, row in falling.iterrows():
+                    st.markdown(
+                        f"**{row['team']}**: {row['last_wins']:.1f} wins "
+                        f"({row['wins_change']:.1f})"
+                    )
+            else:
+                st.caption("No significant decreases")
+
+    # Team selector for detailed charts
+    st.subheader("Team Projection History")
+
+    teams = sorted(time_series["team"].unique())
+
+    # Default to showing a few interesting teams
+    default_teams = ["NYY", "LAD", "ATL", "HOU", "PHI"]
+    default_selection = [t for t in default_teams if t in teams][:3]
+
+    selected_teams = st.multiselect(
+        "Select teams to compare:",
+        options=teams,
+        default=default_selection,
+        max_selections=8,
+    )
+
+    if selected_teams:
+        team_data = time_series[time_series["team"].isin(selected_teams)]
+
+        # Win projection trends
+        st.markdown("#### Projected Wins Over Time")
+        fig_wins = px.line(
+            team_data,
+            x="date",
+            y="mean_wins",
+            color="team",
+            markers=True,
+            labels={"mean_wins": "Projected Wins", "date": "Date", "team": "Team"},
+        )
+        fig_wins.update_layout(
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        st.plotly_chart(fig_wins, use_container_width=True)
+
+        # Playoff odds trends
+        st.markdown("#### Playoff Odds Over Time")
+        fig_playoff = px.line(
+            team_data,
+            x="date",
+            y="playoff_pct",
+            color="team",
+            markers=True,
+            labels={"playoff_pct": "Playoff %", "date": "Date", "team": "Team"},
+        )
+        fig_playoff.update_layout(
+            hovermode="x unified",
+            yaxis_tickformat=".0%",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        st.plotly_chart(fig_playoff, use_container_width=True)
+
+        # Championship odds trends
+        st.markdown("#### World Series Champion Odds Over Time")
+        fig_champ = px.line(
+            team_data,
+            x="date",
+            y="champion_pct",
+            color="team",
+            markers=True,
+            labels={"champion_pct": "Champion %", "date": "Date", "team": "Team"},
+        )
+        fig_champ.update_layout(
+            hovermode="x unified",
+            yaxis_tickformat=".1%",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        )
+        st.plotly_chart(fig_champ, use_container_width=True)
+
+    # Full data table
+    with st.expander("View Raw Data"):
+        st.dataframe(
+            summary[[
+                "team", "first_wins", "last_wins", "wins_change",
+                "first_playoff", "last_playoff", "playoff_change",
+            ]].rename(columns={
+                "team": "Team",
+                "first_wins": f"Wins ({min_date.strftime('%m/%d')})",
+                "last_wins": f"Wins ({max_date.strftime('%m/%d')})",
+                "wins_change": "Change",
+                "first_playoff": f"Playoff ({min_date.strftime('%m/%d')})",
+                "last_playoff": f"Playoff ({max_date.strftime('%m/%d')})",
+                "playoff_change": "Change",
+            }),
+            hide_index=True,
+            use_container_width=True,
+        )
 
 
 def show_comparison_tab():

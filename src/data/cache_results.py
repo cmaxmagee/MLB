@@ -424,3 +424,110 @@ def load_raw_cache_file(filepath: Path) -> Optional[Dict[str, Any]]:
 
     with open(filepath, "r") as f:
         return json.load(f)
+
+
+def load_historical_time_series(
+    cache_dir: Optional[Path] = None,
+    year: int = 2026,
+) -> pd.DataFrame:
+    """Load all historical cache files into a time series DataFrame.
+
+    Args:
+        cache_dir: Directory containing cache files.
+        year: Year to filter by.
+
+    Returns:
+        DataFrame with columns: date, team, mean_wins, playoff_pct, division_winner_pct,
+        world_series_pct, champion_pct, etc.
+    """
+    cache_dir = cache_dir or DEFAULT_CACHE_DIR
+    files = get_available_cache_files(cache_dir)
+
+    # Filter to specific year and exclude 'latest'
+    dated_files = [f for f in files if f["year"] == year and not f["is_latest"]]
+
+    if not dated_files:
+        return pd.DataFrame()
+
+    rows = []
+    for file_info in dated_files:
+        data = load_raw_cache_file(file_info["path"])
+        if data is None:
+            continue
+
+        date_str = file_info["date"]
+        # Parse date string (YYYYMMDD format)
+        try:
+            date = datetime.strptime(date_str, "%Y%m%d").date()
+        except (ValueError, TypeError):
+            continue
+
+        for team, result in data.get("team_results", {}).items():
+            rows.append({
+                "date": date,
+                "team": team,
+                "mean_wins": result.get("mean_wins", 0),
+                "playoff_pct": result.get("playoff_pct", 0),
+                "division_winner_pct": result.get("division_winner_pct", 0),
+                "wild_card_pct": result.get("wild_card_pct", 0),
+                "pennant_pct": result.get("pennant_pct", 0),
+                "world_series_pct": result.get("world_series_pct", 0),
+                "champion_pct": result.get("champion_pct", 0),
+            })
+
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values(["team", "date"])
+
+    return df
+
+
+def get_trend_summary(
+    time_series_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Calculate trend summary showing changes from first to last date.
+
+    Args:
+        time_series_df: DataFrame from load_historical_time_series.
+
+    Returns:
+        DataFrame with columns: team, first_wins, last_wins, wins_change,
+        first_playoff, last_playoff, playoff_change, etc.
+    """
+    if time_series_df.empty:
+        return pd.DataFrame()
+
+    first_date = time_series_df["date"].min()
+    last_date = time_series_df["date"].max()
+
+    first_day = time_series_df[time_series_df["date"] == first_date].set_index("team")
+    last_day = time_series_df[time_series_df["date"] == last_date].set_index("team")
+
+    summary_rows = []
+    for team in first_day.index:
+        if team not in last_day.index:
+            continue
+
+        first = first_day.loc[team]
+        last = last_day.loc[team]
+
+        summary_rows.append({
+            "team": team,
+            "first_date": first_date,
+            "last_date": last_date,
+            "first_wins": first["mean_wins"],
+            "last_wins": last["mean_wins"],
+            "wins_change": last["mean_wins"] - first["mean_wins"],
+            "first_playoff": first["playoff_pct"],
+            "last_playoff": last["playoff_pct"],
+            "playoff_change": last["playoff_pct"] - first["playoff_pct"],
+            "first_champion": first["champion_pct"],
+            "last_champion": last["champion_pct"],
+            "champion_change": last["champion_pct"] - first["champion_pct"],
+        })
+
+    df = pd.DataFrame(summary_rows)
+    if not df.empty:
+        df = df.sort_values("wins_change", ascending=False)
+
+    return df
