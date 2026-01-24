@@ -858,7 +858,7 @@ def show_trends_tab():
         )
         fig_playoff.update_layout(
             hovermode="x unified",
-            yaxis_tickformat=".0%",
+            yaxis_ticksuffix="%",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
         st.plotly_chart(fig_playoff, use_container_width=True)
@@ -875,7 +875,7 @@ def show_trends_tab():
         )
         fig_champ.update_layout(
             hovermode="x unified",
-            yaxis_tickformat=".1%",
+            yaxis_ticksuffix="%",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
         st.plotly_chart(fig_champ, use_container_width=True)
@@ -890,10 +890,10 @@ def show_trends_tab():
                 "team": "Team",
                 "first_wins": f"Wins ({min_date.strftime('%m/%d')})",
                 "last_wins": f"Wins ({max_date.strftime('%m/%d')})",
-                "wins_change": "Change",
+                "wins_change": "Wins Chg",
                 "first_playoff": f"Playoff ({min_date.strftime('%m/%d')})",
                 "last_playoff": f"Playoff ({max_date.strftime('%m/%d')})",
-                "playoff_change": "Change",
+                "playoff_change": "Playoff Chg",
             }),
             hide_index=True,
             use_container_width=True,
